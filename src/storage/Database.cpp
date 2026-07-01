@@ -159,7 +159,7 @@ bool Database::createTables(QSqlDatabase& db) {
         "CREATE TABLE IF NOT EXISTS agg_operation_stats ("
         "  id INTEGER PRIMARY KEY AUTOINCREMENT, time_bucket TEXT NOT NULL, granularity TEXT NOT NULL,"
         "  action_key TEXT NOT NULL, action_type TEXT, count INTEGER NOT NULL,"
-        "  UNIQUE(time_bucket, granularity, action_key))",
+        "  UNIQUE(time_bucket, granularity, action_key, action_type))",
         "CREATE TABLE IF NOT EXISTS agg_module_stats ("
         "  id INTEGER PRIMARY KEY AUTOINCREMENT, time_bucket TEXT NOT NULL, granularity TEXT NOT NULL,"
         "  module_class TEXT NOT NULL, count INTEGER NOT NULL,"

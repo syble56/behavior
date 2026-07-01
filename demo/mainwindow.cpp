@@ -15,7 +15,9 @@
 #include <QAction>
 #include <QKeySequence>
 #include <QDateTime>
+#include <QDateEdit>
 #include <QDateTimeEdit>
+#include <QRegExp>
 #include <QDebug>
 #include <QMessageBox>
 #include <QMenuBar>
@@ -35,6 +37,7 @@
 #include <QTabWidget>
 #include <QPlainTextEdit>
 #include <QTimer>
+#include <QThread>
 #include <QPainter>
 #include <QSqlQuery>
 #include <QSqlDatabase>
@@ -54,22 +57,35 @@
 
 using namespace ui_shared::behavior;
 
-// 自定义 X 轴刻度绘制，显示操作名称
+// 自定义 X 轴刻度绘制，显示操作名称或日期
 class ActionScaleDraw : public QwtScaleDraw {
 public:
     explicit ActionScaleDraw(const QStringList& labels) : m_labels(labels) {
         enableComponent(QwtScaleDraw::Ticks, false);
         enableComponent(QwtScaleDraw::Backbone, false);
+        
+        // 检测是否为日期标签（格式：yyyy-MM-dd）
+        m_isDateFormat = !labels.isEmpty() && labels.first().contains(QRegExp("^\\d{4}-\\d{2}-\\d{2}$"));
     }
     
     QwtText label(double value) const override {
         int idx = static_cast<int>(value + 0.5);  // 四舍五入
         if (idx >= 0 && idx < m_labels.size()) {
             QString name = m_labels[idx];
-            // 截断过长的名称
-            if (name.length() > 8) {
-                name = name.left(6) + "..";
+            
+            if (m_isDateFormat) {
+                // 日期格式：显示为 MM-DD（去掉年份）
+                QStringList parts = name.split('-');
+                if (parts.size() == 3) {
+                    name = parts[1] + "-" + parts[2];  // 显示 "06-24"
+                }
+            } else {
+                // 操作名称：截断过长的名称
+                if (name.length() > 8) {
+                    name = name.left(6) + "..";
+                }
             }
+            
             return QwtText(name, QwtText::PlainText);
         }
         return QwtText();  // 返回空文本，不显示标签
@@ -77,6 +93,79 @@ public:
     
 private:
     QStringList m_labels;
+    bool m_isDateFormat = false;
+};
+
+// 简单的饼图绘制控件
+class PieChartWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit PieChartWidget(QWidget* parent = nullptr) : QWidget(parent) {
+        setMinimumSize(300, 300);
+    }
+
+    void setData(const QStringList& labels, const QVector<double>& values) {
+        m_labels = labels;
+        m_values = values;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        int w = width(), h = height();
+        int side = qMin(w, h) - 40;
+        int cx = w / 2, cy = h / 2;
+        int radius = side / 2;
+
+        double total = 0;
+        for (double v : m_values) total += v;
+        if (total <= 0) {
+            p.setPen(Qt::gray);
+            p.drawText(rect(), Qt::AlignCenter, "无数据");
+            return;
+        }
+
+        // 颜色列表
+        static const QColor colors[] = {
+            QColor("#3B82F6"), QColor("#EF4444"), QColor("#10B981"),
+            QColor("#F59E0B"), QColor("#8B5CF6"), QColor("#EC4899"),
+            QColor("#06B6D4"), QColor("#84CC16")
+        };
+
+        // 画饼图
+        double startAngle = 90.0 * 16;  // 从12点钟方向开始
+        QRectF pieRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+        for (int i = 0; i < m_values.size(); ++i) {
+            double span = m_values[i] / total * 360.0 * 16;
+            p.setBrush(colors[i % 8]);
+            p.setPen(QPen(Qt::white, 2));
+            p.drawPie(pieRect, static_cast<int>(startAngle), static_cast<int>(span));
+            startAngle += span;
+        }
+
+        // 画图例
+        int legendX = cx + radius + 20;
+        int legendY = cy - m_values.size() * 20 / 2;
+        p.setFont(QFont("Microsoft YaHei", 9));
+        for (int i = 0; i < m_values.size(); ++i) {
+            QRectF colorRect(legendX, legendY + i * 20, 12, 12);
+            p.setBrush(colors[i % 8]);
+            p.setPen(Qt::NoPen);
+            p.drawRect(colorRect);
+            p.setPen(Qt::black);
+            QString pct = QString("%1 (%2%)").arg(m_labels[i])
+                .arg(qRound(m_values[i] / total * 100));
+            p.drawText(QPoint(legendX + 18, legendY + i * 20 + 11), pct);
+        }
+    }
+
+private:
+    QStringList m_labels;
+    QVector<double> m_values;
 };
 
 // 简单的热力图绘制控件
@@ -236,7 +325,26 @@ public:
             QMessageBox::information(nullptr, "导出", "数据导出功能");
         });
         connect(btnClear, &QPushButton::clicked, this, []{
-            QMessageBox::information(nullptr, "清空", "数据清空功能");
+            auto ret = QMessageBox::question(nullptr, "确认清空",
+                "将清空所有操作记录和聚合数据，此操作不可撤销。\n\n确定要清空吗？",
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (ret != QMessageBox::Yes) return;
+
+            auto& db = ui_shared::behavior::Database::instance();
+            auto sqlDb = db.connection();
+
+            // 清空所有数据表
+            QStringList tables = {
+                "operations", "sessions",
+                "agg_operation_stats", "agg_module_stats", "agg_input_stats",
+                "agg_heatmap_stats", "agg_dialog_stats", "agg_time_distribution"
+            };
+            for (const auto& t : tables) {
+                QSqlQuery q(sqlDb);
+                q.exec(QStringLiteral("DELETE FROM %1").arg(t));
+            }
+
+            QMessageBox::information(nullptr, "已完成", "所有数据已清空。");
         });
     }
 };
@@ -376,35 +484,37 @@ public:
         lay->setSpacing(12);
         lay->setContentsMargins(16, 16, 16, 16);
         
-        // 时间范围选择
+        // 时间范围选择（只显示日期）
         auto* timeGroup = new QGroupBox("统计区间", this);
         auto* timeLay = new QHBoxLayout(timeGroup);
         timeLay->setSpacing(8);
         
-        timeLay->addWidget(new QLabel("开始时间:", this));
-        m_startTime = new QDateTimeEdit(this);
-        m_startTime->setCalendarPopup(true);
-        m_startTime->setDateTime(QDateTime::currentDateTime().addDays(-1));
-        m_startTime->setDisplayFormat("yyyy-MM-dd HH:mm");
-        timeLay->addWidget(m_startTime);
+        timeLay->addWidget(new QLabel("开始日期:", this));
+        m_startDate = new QDateEdit(this);
+        m_startDate->setCalendarPopup(true);
+        m_startDate->setDate(QDate::currentDate().addDays(-7));
+        m_startDate->setDisplayFormat("yyyy-MM-dd");
+        timeLay->addWidget(m_startDate);
         
         timeLay->addSpacing(12);
-        timeLay->addWidget(new QLabel("结束时间:", this));
-        m_endTime = new QDateTimeEdit(this);
-        m_endTime->setCalendarPopup(true);
-        m_endTime->setDateTime(QDateTime::currentDateTime());
-        m_endTime->setDisplayFormat("yyyy-MM-dd HH:mm");
-        timeLay->addWidget(m_endTime);
+        timeLay->addWidget(new QLabel("结束日期:", this));
+        m_endDate = new QDateEdit(this);
+        m_endDate->setCalendarPopup(true);
+        m_endDate->setDate(QDate::currentDate());
+        m_endDate->setDisplayFormat("yyyy-MM-dd");
+        timeLay->addWidget(m_endDate);
         
         timeLay->addSpacing(16);
         
         // 快捷按钮
-        auto* btnLastHour = new QPushButton("最近1小时", this);
-        auto* btnLastDay = new QPushButton("最近1天", this);
+        auto* btnToday = new QPushButton("今天", this);
+        auto* btnLast3Days = new QPushButton("最近3天", this);
         auto* btnLastWeek = new QPushButton("最近7天", this);
-        timeLay->addWidget(btnLastHour);
-        timeLay->addWidget(btnLastDay);
+        auto* btnLastMonth = new QPushButton("最近30天", this);
+        timeLay->addWidget(btnToday);
+        timeLay->addWidget(btnLast3Days);
         timeLay->addWidget(btnLastWeek);
+        timeLay->addWidget(btnLastMonth);
         
         timeLay->addSpacing(8);
         
@@ -448,11 +558,8 @@ public:
         m_moduleChart->setAxisTitle(QwtPlot::xBottom, "模块");
         m_tabWidget->addTab(m_moduleChart, "模块统计");
         
-        // 输入方式 tab - 柱状图
-        m_inputChart = new QwtPlot(this);
-        m_inputChart->setCanvasBackground(Qt::white);
-        m_inputChart->setAxisTitle(QwtPlot::yLeft, "次数");
-        m_inputChart->setAxisTitle(QwtPlot::xBottom, "输入方式");
+        // 输入方式 tab - 饼图
+        m_inputChart = new PieChartWidget(this);
         m_tabWidget->addTab(m_inputChart, "输入方式");
         
         // 时间分布 tab - 折线图
@@ -474,17 +581,21 @@ public:
         connect(btns, &QDialogButtonBox::rejected, this, &QDialog::reject);
         
         // 连接信号
-        connect(btnLastHour, &QPushButton::clicked, this, [this]{
-            m_endTime->setDateTime(QDateTime::currentDateTime());
-            m_startTime->setDateTime(QDateTime::currentDateTime().addSecs(-3600));
+        connect(btnToday, &QPushButton::clicked, this, [this]{
+            m_endDate->setDate(QDate::currentDate());
+            m_startDate->setDate(QDate::currentDate());
         });
-        connect(btnLastDay, &QPushButton::clicked, this, [this]{
-            m_endTime->setDateTime(QDateTime::currentDateTime());
-            m_startTime->setDateTime(QDateTime::currentDateTime().addDays(-1));
+        connect(btnLast3Days, &QPushButton::clicked, this, [this]{
+            m_endDate->setDate(QDate::currentDate());
+            m_startDate->setDate(QDate::currentDate().addDays(-2));
         });
         connect(btnLastWeek, &QPushButton::clicked, this, [this]{
-            m_endTime->setDateTime(QDateTime::currentDateTime());
-            m_startTime->setDateTime(QDateTime::currentDateTime().addDays(-7));
+            m_endDate->setDate(QDate::currentDate());
+            m_startDate->setDate(QDate::currentDate().addDays(-6));
+        });
+        connect(btnLastMonth, &QPushButton::clicked, this, [this]{
+            m_endDate->setDate(QDate::currentDate());
+            m_startDate->setDate(QDate::currentDate().addDays(-29));
         });
         connect(btnAnalyze, &QPushButton::clicked, this, &AnalysisDialog::onAnalyze);
         
@@ -494,8 +605,9 @@ public:
     
 private slots:
     void onAnalyze() {
-        QDateTime start = m_startTime->dateTime();
-        QDateTime end = m_endTime->dateTime();
+        // 获取日期范围（开始时间为当天 00:00:00，结束时间为当天 23:59:59）
+        QDateTime start(m_startDate->date(), QTime(0, 0, 0));
+        QDateTime end(m_endDate->date(), QTime(23, 59, 59));
         
         auto& db = ui_shared::behavior::Database::instance();
         QSqlDatabase sqlDb = db.connection();
@@ -504,17 +616,93 @@ private slots:
             return;
         }
         
-        // 格式化时间桶范围
-        QString startBucket = start.toString("yyyy-MM-dd HH:00");
-        QString endBucket = end.toString("yyyy-MM-dd HH:00");
+        // 显示调试信息：数据库中的数据时间范围
+        qint64 startMs = start.toMSecsSinceEpoch();
+        qint64 endMs = end.toMSecsSinceEpoch();
         
-        // 检查聚合表是否有数据
-        QSqlQuery checkQuery(sqlDb);
-        checkQuery.exec("SELECT COUNT(*) FROM agg_operation_stats");
+        QSqlQuery debugQuery(sqlDb);
+        debugQuery.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ?");
+        debugQuery.addBindValue(startMs);
+        debugQuery.addBindValue(endMs);
+        debugQuery.exec();
+        int countInRange = 0;
+        if (debugQuery.next()) countInRange = debugQuery.value(0).toInt();
+        
+        debugQuery.exec("SELECT COUNT(*) FROM operations");
+        int totalOps = 0;
+        if (debugQuery.next()) totalOps = debugQuery.value(0).toInt();
+        
+        debugQuery.exec("SELECT MIN(time), MAX(time) FROM operations");
+        qint64 minTime = 0, maxTime = 0;
+        if (debugQuery.next()) {
+            minTime = debugQuery.value(0).toLongLong();
+            maxTime = debugQuery.value(1).toLongLong();
+        }
+        
+        QString debugInfo = QString("统计区间: %1 至 %2\n")
+            .arg(start.toString("yyyy-MM-dd HH:mm:ss"))
+            .arg(end.toString("yyyy-MM-dd HH:mm:ss"));
+        debugInfo += QString("区间内记录数: %1\n").arg(countInRange);
+        debugInfo += QString("总记录数: %1\n").arg(totalOps);
+        if (minTime > 0 && maxTime > 0) {
+            debugInfo += QString("数据时间范围: %1 至 %2")
+                .arg(QDateTime::fromMSecsSinceEpoch(minTime).toString("yyyy-MM-dd HH:mm:ss"))
+                .arg(QDateTime::fromMSecsSinceEpoch(maxTime).toString("yyyy-MM-dd HH:mm:ss"));
+        } else {
+            debugInfo += "数据时间范围: (无数据)";
+        }
+        
+        qDebug() << "Analysis Debug Info:\n" << debugInfo;
+        
+        // 检查聚合表数据
+        QSqlQuery aggCheckQuery(sqlDb);
+        aggCheckQuery.exec("SELECT COUNT(*) FROM agg_operation_stats");
         int aggCount = 0;
-        if (checkQuery.next()) aggCount = checkQuery.value(0).toInt();
+        if (aggCheckQuery.next()) aggCount = aggCheckQuery.value(0).toInt();
         
-        bool useAgg = (aggCount > 0);
+        aggCheckQuery.exec("SELECT MIN(time_bucket), MAX(time_bucket) FROM agg_operation_stats");
+        QString aggMinBucket, aggMaxBucket;
+        if (aggCheckQuery.next()) {
+            aggMinBucket = aggCheckQuery.value(0).toString();
+            aggMaxBucket = aggCheckQuery.value(1).toString();
+        }
+        
+        qDebug() << "Aggregation table: count=" << aggCount 
+                 << ", range=" << aggMinBucket << "to" << aggMaxBucket;
+        
+        // 更新窗口标题，显示数据情况
+        QString title = QString("行为分析结果 - 区间内: %1 条, 总计: %2 条, 聚合: %3 条")
+            .arg(countInRange).arg(totalOps).arg(aggCount);
+        setWindowTitle(title);
+        
+        // 格式化时间桶范围（天粒度）
+        QString startBucket = start.toString("yyyy-MM-dd");
+        QString endBucket = end.toString("yyyy-MM-dd");
+        
+        // ≤3个月：直接查 operations（实时准确，数据量可控）
+        // >3个月：走聚合表（长期趋势，今天数据可能略滞后）
+        int rangeDays = start.date().daysTo(end.date()) + 1;
+        bool useAgg = false;
+        if (rangeDays > 90) {
+            // 检查聚合表天粒度是否覆盖查询范围
+            QSqlQuery dayRangeQuery(sqlDb);
+            dayRangeQuery.exec(
+                "SELECT MIN(time_bucket), MAX(time_bucket) FROM agg_operation_stats "
+                "WHERE length(time_bucket) = 10");
+            QString aggMinDay, aggMaxDay;
+            if (dayRangeQuery.next()) {
+                aggMinDay = dayRangeQuery.value(0).toString();
+                aggMaxDay = dayRangeQuery.value(1).toString();
+            }
+            if (!aggMinDay.isEmpty() && startBucket >= aggMinDay && endBucket <= aggMaxDay) {
+                useAgg = true;
+            }
+        }
+        
+        qDebug() << "Using aggregation table:" << useAgg 
+                 << ", query range:" << startBucket << "to" << endBucket
+                 << ", range days:" << rangeDays;
+        
         int total = 0;
         
         // ========== 操作频率图表 ==========
@@ -527,14 +715,14 @@ private slots:
             opQuery.prepare(
                 "SELECT action_key, SUM(count) as cnt "
                 "FROM agg_operation_stats "
-                "WHERE time_bucket >= ? AND time_bucket < ? "
+                "WHERE time_bucket >= ? AND time_bucket <= ? "
                 "GROUP BY action_key ORDER BY cnt DESC LIMIT 15");
             opQuery.addBindValue(startBucket);
             opQuery.addBindValue(endBucket);
             opQuery.exec();
             
             QSqlQuery totalQuery(sqlDb);
-            totalQuery.prepare("SELECT SUM(count) FROM agg_operation_stats WHERE time_bucket >= ? AND time_bucket < ?");
+            totalQuery.prepare("SELECT SUM(count) FROM agg_operation_stats WHERE time_bucket >= ? AND time_bucket <= ?");
             totalQuery.addBindValue(startBucket);
             totalQuery.addBindValue(endBucket);
             totalQuery.exec();
@@ -588,7 +776,7 @@ private slots:
             QSqlQuery modQuery(sqlDb);
             modQuery.prepare(
                 "SELECT module_class, SUM(count) as cnt "
-                "FROM agg_module_stats WHERE time_bucket >= ? AND time_bucket < ? "
+                "FROM agg_module_stats WHERE time_bucket >= ? AND time_bucket <= ? "
                 "GROUP BY module_class ORDER BY cnt DESC");
             modQuery.addBindValue(startBucket);
             modQuery.addBindValue(endBucket);
@@ -620,14 +808,18 @@ private slots:
             auto* modChart = new QwtPlotBarChart("模块统计");
             modChart->setSamples(modData);
             modChart->attach(m_moduleChart);
-            m_moduleChart->setAxisScale(QwtPlot::xBottom, 0, modData.size() - 1, 1);
+            // 单个数据点时使用对称区间，避免 min==max 导致柱子塌缩成竖线
+            if (modData.size() == 1) {
+                m_moduleChart->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
+            } else {
+                m_moduleChart->setAxisScale(QwtPlot::xBottom, 0, modData.size() - 1, 1);
+            }
             m_moduleChart->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(modData.begin(), modData.end()) * 1.2);
             m_moduleChart->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(modLabels));
             m_moduleChart->replot();
         }
         
         // ========== 输入方式图表 ==========
-        m_inputChart->detachItems();
         QVector<double> inputData;
         QStringList inputLabels;
         
@@ -635,7 +827,7 @@ private slots:
             QSqlQuery inputQuery(sqlDb);
             inputQuery.prepare(
                 "SELECT input_method, SUM(count) as cnt "
-                "FROM agg_input_stats WHERE time_bucket >= ? AND time_bucket < ? "
+                "FROM agg_input_stats WHERE time_bucket >= ? AND time_bucket <= ? "
                 "GROUP BY input_method ORDER BY cnt DESC");
             inputQuery.addBindValue(startBucket);
             inputQuery.addBindValue(endBucket);
@@ -672,13 +864,9 @@ private slots:
         }
         
         if (!inputData.isEmpty()) {
-            auto* inputChart = new QwtPlotBarChart("输入方式");
-            inputChart->setSamples(inputData);
-            inputChart->attach(m_inputChart);
-            m_inputChart->setAxisScale(QwtPlot::xBottom, 0, inputData.size() - 1, 1);
-            m_inputChart->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(inputData.begin(), inputData.end()) * 1.2);
-            m_inputChart->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(inputLabels));
-            m_inputChart->replot();
+            m_inputChart->setData(inputLabels, inputData);
+        } else {
+            m_inputChart->setData({}, {});
         }
         
         // ========== 时间分布图表（折线图） ==========
@@ -689,9 +877,9 @@ private slots:
         if (useAgg) {
             QSqlQuery timeQuery(sqlDb);
             timeQuery.prepare(
-                "SELECT date || ' ' || hour || ':00' as time, SUM(count) as cnt "
+                "SELECT date, SUM(count) as cnt "
                 "FROM agg_time_distribution WHERE date >= ? AND date <= ? "
-                "GROUP BY date, hour ORDER BY date, hour");
+                "GROUP BY date ORDER BY date");
             timeQuery.addBindValue(start.toString("yyyy-MM-dd"));
             timeQuery.addBindValue(end.toString("yyyy-MM-dd"));
             timeQuery.exec();
@@ -706,8 +894,8 @@ private slots:
             
             QSqlQuery timeQuery(sqlDb);
             timeQuery.prepare(
-                "SELECT strftime('%Y-%m-%d %H:00', datetime(time/1000,'unixepoch','localtime')) as time, COUNT(*) as cnt "
-                "FROM operations WHERE time >= ? AND time < ? GROUP BY time ORDER BY time");
+                "SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt, COUNT(*) as cnt "
+                "FROM operations WHERE time >= ? AND time < ? GROUP BY dt ORDER BY dt");
             timeQuery.addBindValue(startMs);
             timeQuery.addBindValue(endMs);
             timeQuery.exec();
@@ -718,16 +906,64 @@ private slots:
             }
         }
         
+        // 按选的日期范围补零，保证 X 轴完整
+        {
+            QHash<QString, double> dayMap;
+            for (int i = 0; i < timeLabels.size(); ++i)
+                dayMap[timeLabels[i]] = timeData[i];
+
+            timeLabels.clear();
+            timeData.clear();
+            for (QDate d = start.date(); d <= end.date(); d = d.addDays(1)) {
+                QString key = d.toString("yyyy-MM-dd");
+                timeLabels << key;
+                timeData << dayMap.value(key, 0.0);
+            }
+        }
+
         if (!timeData.isEmpty()) {
-            auto* timeCurve = new QwtPlotCurve("时间分布");
-            QVector<double> x(timeData.size());
-            for (int i = 0; i < timeData.size(); ++i) x[i] = i;
-            timeCurve->setSamples(x.data(), timeData.data(), timeData.size());
-            timeCurve->setPen(QPen(QColor("#1E40AF"), 2));
-            timeCurve->attach(m_timeChart);
-            m_timeChart->setAxisScale(QwtPlot::xBottom, 0, timeData.size() - 1, qMax(1, timeData.size() / 10));
-            m_timeChart->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(timeData.begin(), timeData.end()) * 1.2);
+            int n = timeData.size();
+            // 根据数据点数量选择图表类型
+            if (n <= 7) {
+                // 一周以内：柱状图
+                auto* timeChart = new QwtPlotBarChart("时间分布");
+                timeChart->setSamples(timeData);
+                timeChart->attach(m_timeChart);
+                if (n == 1) {
+                    m_timeChart->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
+                } else {
+                    m_timeChart->setAxisScale(QwtPlot::xBottom, 0, n - 1, 1);
+                }
+            } else {
+                // 超过一周：折线图
+                auto* timeCurve = new QwtPlotCurve("时间分布");
+                QVector<double> x(n);
+                for (int i = 0; i < n; ++i) x[i] = i;
+                timeCurve->setSamples(x.data(), timeData.data(), n);
+                timeCurve->setPen(QPen(QColor("#1E40AF"), 2));
+                timeCurve->attach(m_timeChart);
+                // 智能标签间距：≤30天每5天一个标签，≤90天每10天，否则每30天
+                int step = (n <= 30) ? 5 : (n <= 90) ? 10 : 30;
+                m_timeChart->setAxisScale(QwtPlot::xBottom, 0, n - 1, step);
+            }
+            
+            // Y 轴：最大值至少为 1，避免全零时比例塌缩
+            double maxVal = *std::max_element(timeData.begin(), timeData.end());
+            m_timeChart->setAxisScale(QwtPlot::yLeft, 0, qMax(maxVal * 1.2, 1.0));
+            
+            // 使用自定义刻度绘制，显示日期标签
             m_timeChart->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(timeLabels));
+            
+            // 设置 X 轴标题，显示统计区间
+            QString xAxisTitle = QString("日期 (%1 至 %2)")
+                .arg(start.toString("yyyy-MM-dd"))
+                .arg(end.toString("yyyy-MM-dd"));
+            m_timeChart->setAxisTitle(QwtPlot::xBottom, xAxisTitle);
+            
+            m_timeChart->replot();
+        } else {
+            // 没有数据时显示提示
+            m_timeChart->setAxisTitle(QwtPlot::xBottom, "日期 (无数据)");
             m_timeChart->replot();
         }
         
@@ -739,7 +975,7 @@ private slots:
             QSqlQuery heatQuery(sqlDb);
             heatQuery.prepare(
                 "SELECT heat_region, SUM(count) as cnt "
-                "FROM agg_heatmap_stats WHERE time_bucket >= ? AND time_bucket < ? "
+                "FROM agg_heatmap_stats WHERE time_bucket >= ? AND time_bucket <= ? "
                 "GROUP BY heat_region");
             heatQuery.addBindValue(startBucket);
             heatQuery.addBindValue(endBucket);
@@ -776,12 +1012,12 @@ private slots:
     }
     
 private:
-    QDateTimeEdit* m_startTime = nullptr;
-    QDateTimeEdit* m_endTime = nullptr;
+    QDateEdit* m_startDate = nullptr;
+    QDateEdit* m_endDate = nullptr;
     QTabWidget* m_tabWidget = nullptr;
     QwtPlot* m_operationChart = nullptr;
     QwtPlot* m_moduleChart = nullptr;
-    QwtPlot* m_inputChart = nullptr;
+    PieChartWidget* m_inputChart = nullptr;
     QwtPlot* m_timeChart = nullptr;
     HeatmapWidget* m_heatmapWidget = nullptr;
 };
@@ -889,14 +1125,10 @@ void MainWindow::setupCentralWidget() {
     m_timeChart = timePlot;
     tabWidget->addTab(timePlot, "时段分布");
     
-    // 输入方式（柱状图）
-    auto* inputPlot = new QwtPlot();
-    inputPlot->setTitle("输入方式分布");
-    inputPlot->setAxisTitle(QwtPlot::xBottom, "类型");
-    inputPlot->setAxisTitle(QwtPlot::yLeft, "次数");
-    inputPlot->insertLegend(new QwtLegend());
-    m_inputChart = inputPlot;
-    tabWidget->addTab(inputPlot, "输入方式");
+    // 输入方式（饼图）
+    auto* inputPie = new PieChartWidget();
+    m_inputChart = inputPie;
+    tabWidget->addTab(inputPie, "输入方式");
     
     // 热力图
     auto* heatmapWidget = new HeatmapWidget();
@@ -1073,13 +1305,11 @@ void MainWindow::updateCharts() {
     timePlot->setAxisScale(QwtPlot::yLeft, 0, maxVal > 0 ? maxVal * 1.2 : 100);
     timePlot->replot();
     
-    // 输入方式图表
-    auto* inputPlot = qobject_cast<QwtPlot*>(m_inputChart);
-    inputPlot->detachItems();
+    // 输入方式图表（饼图）
+    auto* inputPie = qobject_cast<PieChartWidget*>(m_inputChart);
     
     auto inputResult = analyzer->analyzeInput(start, end);
     y.clear();
-    maxVal = 0;
     
     // 数据格式是 mouse/touch/keyboard 三个对象
     QStringList types = {"mouse", "touch", "keyboard"};
@@ -1088,16 +1318,9 @@ void MainWindow::updateCharts() {
         QVariantMap m = inputResult.data[type].toMap();
         double v = m["count"].toDouble();
         y << v;
-        maxVal = qMax(maxVal, v);
     }
     
-    auto* inputChart = new QwtPlotBarChart("输入方式");
-    inputChart->setSamples(y);
-    inputChart->attach(inputPlot);
-    inputPlot->setAxisScale(QwtPlot::xBottom, 0, 2, 1);  // 只显示 0, 1, 2 三个刻度
-    inputPlot->setAxisScale(QwtPlot::yLeft, 0, maxVal > 0 ? maxVal * 1.2 : 100);
-    inputPlot->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(typeLabels));
-    inputPlot->replot();
+    inputPie->setData(typeLabels, y);
     
     // 热力图
     auto* heatmapWidget = qobject_cast<HeatmapWidget*>(m_heatmapChart);
@@ -1249,16 +1472,25 @@ void MainWindow::onAggregation() {
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
+    appendLog(QString("聚合时间范围: %1 至 %2")
+        .arg(start.toString("yyyy-MM-dd HH:mm:ss"))
+        .arg(end.toString("yyyy-MM-dd HH:mm:ss")));
+    
     // 使用 COALESCE(action_name, control_name, control_class, event_type) 确保不为空
-    // 注意：使用 'localtime' 转换为本地时间
+    // 注意：使用 'localtime' 转换为本地时间，天粒度
+    
+    // 开始事务，避免数据库锁定
+    QSqlQuery transQuery(sqlDb);
+    transQuery.exec("BEGIN IMMEDIATE TRANSACTION");
+    
     QString insertSql = QString(
         "INSERT OR REPLACE INTO agg_operation_stats (time_bucket,granularity,action_key,action_type,count) "
-        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'hour', "
+        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'day', "
         "COALESCE(NULLIF(action_name,''), NULLIF(control_name,''), NULLIF(control_class,''), event_type), "
         "event_type, COUNT(*) "
         "FROM operations WHERE time >= %2 AND time < %3 "
         "GROUP BY 1, 3, 4")
-        .arg("%Y-%m-%d %H:00")
+        .arg("%Y-%m-%d")
         .arg(startMs)
         .arg(endMs);
     
@@ -1272,11 +1504,11 @@ void MainWindow::onAggregation() {
     // 聚合其他表
     QString moduleSql = QString(
         "INSERT OR REPLACE INTO agg_module_stats (time_bucket,granularity,module_class,count) "
-        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'hour', "
+        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'day', "
         "COALESCE(NULLIF(window_class,''), 'unknown'), COUNT(*) "
         "FROM operations WHERE time >= %2 AND time < %3 "
         "GROUP BY 1, 3")
-        .arg("%Y-%m-%d %H:00")
+        .arg("%Y-%m-%d")
         .arg(startMs)
         .arg(endMs);
     
@@ -1289,11 +1521,11 @@ void MainWindow::onAggregation() {
     
     QString inputSql = QString(
         "INSERT OR REPLACE INTO agg_input_stats (time_bucket,granularity,input_method,count) "
-        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'hour', "
+        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'day', "
         "input_method, COUNT(*) "
         "FROM operations WHERE time >= %2 AND time < %3 "
         "GROUP BY 1, 3")
-        .arg("%Y-%m-%d %H:00")
+        .arg("%Y-%m-%d")
         .arg(startMs)
         .arg(endMs);
     
@@ -1307,12 +1539,12 @@ void MainWindow::onAggregation() {
     // 热力图聚合
     QString heatmapSql = QString(
         "INSERT OR REPLACE INTO agg_heatmap_stats (time_bucket,granularity,heat_region,count) "
-        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'hour', "
+        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'day', "
         "heat_region, COUNT(*) "
         "FROM operations WHERE time >= %2 AND time < %3 "
         "AND is_main_window = 1 AND event_type IN ('mouse_click','touch_tap','area_click') "
         "GROUP BY 1, 3")
-        .arg("%Y-%m-%d %H:00")
+        .arg("%Y-%m-%d")
         .arg(startMs)
         .arg(endMs);
     
@@ -1326,11 +1558,11 @@ void MainWindow::onAggregation() {
     // 对话框聚合
     QString dialogSql = QString(
         "INSERT OR REPLACE INTO agg_dialog_stats (time_bucket,granularity,dialog_class,open_count,total_duration,avg_duration) "
-        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'hour', "
+        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'day', "
         "window_class, COUNT(*), SUM(COALESCE(duration,0)), AVG(COALESCE(duration,0)) "
         "FROM operations WHERE time >= %2 AND time < %3 AND event_type = 'dialog_close' "
         "GROUP BY 1, 3")
-        .arg("%Y-%m-%d %H:00")
+        .arg("%Y-%m-%d")
         .arg(startMs)
         .arg(endMs);
     
@@ -1341,14 +1573,13 @@ void MainWindow::onAggregation() {
         appendLog("agg_dialog_stats 插入成功");
     }
     
-    // 时间分布聚合
+    // 时间分布聚合（天粒度）
     QString timeSql = QString(
         "INSERT OR REPLACE INTO agg_time_distribution (date,hour,count) "
         "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), "
-        "CAST(strftime('%2', datetime(time/1000,'unixepoch','localtime')) AS INTEGER), COUNT(*) "
-        "FROM operations WHERE time >= %3 AND time < %4 GROUP BY 1, 2")
+        "0, COUNT(*) "
+        "FROM operations WHERE time >= %2 AND time < %3 GROUP BY 1")
         .arg("%Y-%m-%d")
-        .arg("%H")
         .arg(startMs)
         .arg(endMs);
     
@@ -1358,6 +1589,10 @@ void MainWindow::onAggregation() {
     } else {
         appendLog("agg_time_distribution 插入成功");
     }
+    
+    // 提交事务
+    transQuery.exec("COMMIT");
+    appendLog("事务已提交");
     
     // 检查聚合结果
     QStringList tableNames = {
@@ -1376,10 +1611,26 @@ void MainWindow::onAggregation() {
     
     // 检查 time_bucket 实际值
     QSqlQuery tbQuery(sqlDb);
-    tbQuery.exec("SELECT DISTINCT time_bucket FROM agg_heatmap_stats LIMIT 5");
-    appendLog("time_bucket 实际值:");
+    tbQuery.exec("SELECT DISTINCT time_bucket FROM agg_operation_stats ORDER BY time_bucket DESC LIMIT 10");
+    appendLog("agg_operation_stats time_bucket 实际值:");
     while (tbQuery.next()) {
         appendLog(QString("  '%1'").arg(tbQuery.value(0).toString()));
+    }
+    
+    tbQuery.exec("SELECT DISTINCT time_bucket FROM agg_heatmap_stats LIMIT 5");
+    appendLog("agg_heatmap_stats time_bucket 实际值:");
+    while (tbQuery.next()) {
+        appendLog(QString("  '%1'").arg(tbQuery.value(0).toString()));
+    }
+    
+    // 检查今天的数据
+    QString today = QDate::currentDate().toString("yyyy-MM-dd");
+    tbQuery.prepare("SELECT COUNT(*) FROM agg_operation_stats WHERE time_bucket = ?");
+    tbQuery.addBindValue(today);
+    tbQuery.exec();
+    if (tbQuery.next()) {
+        int todayCount = tbQuery.value(0).toInt();
+        appendLog(QString("今天(%1)的聚合数据: %2 条").arg(today).arg(todayCount));
     }
     
     appendLog("聚合完成");

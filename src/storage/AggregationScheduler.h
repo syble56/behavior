@@ -20,11 +20,13 @@ public:
 
 private slots:
     void onStartup();
+    void onRefreshToday();
     void onHourly();
 
 private:
     QTimer* m_hourlyTimer = nullptr;
     QTimer* m_startupTimer = nullptr;
+    QTimer* m_refreshTimer = nullptr;   // 定时刷新今天
     Aggregator* m_aggregator = nullptr;
 };
 

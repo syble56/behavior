@@ -39,3 +39,10 @@ option(BEHAVIOR_BUILD_DEMO "Build demo app" ON)
 if(BEHAVIOR_BUILD_DEMO)
     add_subdirectory(demo)
 endif()
+
+# --- Tests ---
+option(BEHAVIOR_BUILD_TESTS "Build unit tests" OFF)
+if(BEHAVIOR_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
