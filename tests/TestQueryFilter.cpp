@@ -3,9 +3,9 @@
 #include <QTemporaryDir>
 #include <QDateTime>
 
-#include "storage/Database.h"
-#include "core/Types.h"
-#include "core/Config.h"
+#include "storage/database.h"
+#include "core/types.h"
+#include "core/config.h"
 
 using namespace ui_shared::behavior;
 
@@ -38,36 +38,36 @@ private slots:
     void testSpecialCharsInSessionId();
 
 private:
-    QTemporaryDir* m_dir = nullptr;
-    QString m_path;
-    qint64 m_base = 0;
+    QTemporaryDir* dir_ = nullptr;
+    QString path_;
+    qint64 base_ = 0;
 };
 
 void TestQueryFilter::init() {
-    m_dir = new QTemporaryDir;
-    m_path = m_dir->path() + "/qf_test.db";
-    Config::instance().setDatabasePath(m_path);
-    Database::instance().open(m_path);
-    m_base = QDateTime::currentMSecsSinceEpoch();
+    dir_ = new QTemporaryDir;
+    path_ = dir_->path() + "/qf_test.db";
+    Config::instance().setDatabasePath(path_);
+    Database::instance().open(path_);
+    base_ = QDateTime::currentMSecsSinceEpoch();
 }
 
 void TestQueryFilter::cleanup() {
     Database::instance().close();
-    delete m_dir;
-    m_dir = nullptr;
+    delete dir_;
+    dir_ = nullptr;
 }
 
 void TestQueryFilter::testCombinedFilters() {
     Database::instance().batchInsert({
-        makeOp(m_base, "s1", EventType::MouseClick, "Main", true),
-        makeOp(m_base + 1, "s1", EventType::Shortcut, "Main", true),
-        makeOp(m_base + 2, "s2", EventType::MouseClick, "Main", true),
-        makeOp(m_base + 3, "s1", EventType::MouseClick, "Dialog", false),
+        makeOp(base_, "s1", EventType::MouseClick, "Main", true),
+        makeOp(base_ + 1, "s1", EventType::Shortcut, "Main", true),
+        makeOp(base_ + 2, "s2", EventType::MouseClick, "Main", true),
+        makeOp(base_ + 3, "s1", EventType::MouseClick, "Dialog", false),
     });
 
     QueryFilter f;
-    f.startTime = QDateTime::fromMSecsSinceEpoch(m_base - 1);
-    f.endTime = QDateTime::fromMSecsSinceEpoch(m_base + 10);
+    f.startTime = QDateTime::fromMSecsSinceEpoch(base_ - 1);
+    f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 10);
     f.sessionId = "s1";
     f.eventType = "mouse_click";
     f.onlyMainWindow = true;
@@ -84,33 +84,33 @@ void TestQueryFilter::testCombinedFilters() {
 void TestQueryFilter::testExactBoundary() {
     // time >= start AND time <= end（注意是 <=）
     Database::instance().batchInsert({
-        makeOp(m_base),
-        makeOp(m_base + 100),
+        makeOp(base_),
+        makeOp(base_ + 100),
     });
 
     QueryFilter f;
-    f.startTime = QDateTime::fromMSecsSinceEpoch(m_base);
-    f.endTime = QDateTime::fromMSecsSinceEpoch(m_base);
+    f.startTime = QDateTime::fromMSecsSinceEpoch(base_);
+    f.endTime = QDateTime::fromMSecsSinceEpoch(base_);
     f.limit = 100;
     auto ops = Database::instance().queryOperations(f);
-    // time >= m_base AND time <= m_base → 1条
+    // time >= base_ AND time <= base_ → 1条
     QCOMPARE(ops.size(), 1);
 }
 
 void TestQueryFilter::testNoResults() {
     QueryFilter f;
-    f.startTime = QDateTime::fromMSecsSinceEpoch(m_base + 1000);
-    f.endTime = QDateTime::fromMSecsSinceEpoch(m_base + 2000);
+    f.startTime = QDateTime::fromMSecsSinceEpoch(base_ + 1000);
+    f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 2000);
     f.limit = 100;
     auto ops = Database::instance().queryOperations(f);
     QVERIFY(ops.isEmpty());
 }
 
 void TestQueryFilter::testLimitZero() {
-    Database::instance().batchInsert({makeOp(m_base), makeOp(m_base + 1)});
+    Database::instance().batchInsert({makeOp(base_), makeOp(base_ + 1)});
     QueryFilter f;
-    f.startTime = QDateTime::fromMSecsSinceEpoch(m_base - 1);
-    f.endTime = QDateTime::fromMSecsSinceEpoch(m_base + 10);
+    f.startTime = QDateTime::fromMSecsSinceEpoch(base_ - 1);
+    f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 10);
     f.limit = 0;
     auto ops = Database::instance().queryOperations(f);
     QCOMPARE(ops.size(), 0);
@@ -132,11 +132,11 @@ void TestQueryFilter::testLargeTimestamp() {
 
 void TestQueryFilter::testSpecialCharsInSessionId() {
     QString weird = "s'es\"s\nID\t特殊字符";
-    Operation op = makeOp(m_base, weird);
+    Operation op = makeOp(base_, weird);
     QVERIFY(Database::instance().insertOperation(op));
     QueryFilter f;
-    f.startTime = QDateTime::fromMSecsSinceEpoch(m_base - 1);
-    f.endTime = QDateTime::fromMSecsSinceEpoch(m_base + 10);
+    f.startTime = QDateTime::fromMSecsSinceEpoch(base_ - 1);
+    f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 10);
     f.sessionId = weird;
     f.limit = 10;
     auto ops = Database::instance().queryOperations(f);

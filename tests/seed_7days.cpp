@@ -15,10 +15,10 @@
 #include <cmath>
 #include <algorithm>
 
-#include "core/Types.h"
-#include "storage/Database.h"
-#include "storage/Aggregator.h"
-#include "core/Config.h"
+#include "core/types.h"
+#include "storage/database.h"
+#include "storage/aggregator.h"
+#include "core/config.h"
 
 using namespace ui_shared::behavior;
 

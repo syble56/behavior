@@ -1,4 +1,4 @@
-#include "Session.h"
+#include "session.h"
 #include <QUuid>
 #include <QDateTime>
 
@@ -13,19 +13,19 @@ QString SessionManager::generateId() {
 }
 
 QString SessionManager::start() {
-    m_current = Session{};
-    m_current.id = generateId();
-    m_current.startTime = QDateTime::currentDateTime().toMSecsSinceEpoch();
-    m_active = true;
-    return m_current.id;
+    current_ = Session{};
+    current_.id = generateId();
+    current_.startTime = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    active_ = true;
+    return current_.id;
 }
 
 Session SessionManager::end() {
-    if (!m_active) return m_current;
-    m_current.endTime = QDateTime::currentDateTime().toMSecsSinceEpoch();
-    m_current.durationSeconds = static_cast<int>((m_current.endTime - m_current.startTime) / 1000);
-    m_active = false;
-    return m_current;
+    if (!active_) return current_;
+    current_.endTime = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    current_.durationSeconds = static_cast<int>((current_.endTime - current_.startTime) / 1000);
+    active_ = false;
+    return current_;
 }
 
 } // namespace behavior

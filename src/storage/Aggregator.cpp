@@ -1,5 +1,5 @@
-#include "Aggregator.h"
-#include "Database.h"
+#include "aggregator.h"
+#include "database.h"
 #include <QSqlQuery>
 #include <QSqlError>
 
@@ -123,11 +123,17 @@ void Aggregator::aggregateDialogs(const QDateTime& start, const QDateTime& end, 
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
+    // 标识优先级与 dialog_analyzer 一致：windowTitle > controlName > windowClass
+    // open_count 统计 dialog_open，时长统计 dialog_close
     QString sql = QString(
         "INSERT OR REPLACE INTO agg_dialog_stats (time_bucket,granularity,dialog_class,open_count,total_duration,avg_duration) "
         "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), '%2', "
-        "window_class, COUNT(*), SUM(COALESCE(duration,0)), AVG(COALESCE(duration,0)) "
-        "FROM operations WHERE time >= %3 AND time < %4 AND event_type = 'dialog_close' "
+        "COALESCE(NULLIF(window_title,''), NULLIF(control_name,''), window_class), "
+        "SUM(CASE WHEN event_type='dialog_open' THEN 1 ELSE 0 END), "
+        "SUM(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) ELSE 0 END), "
+        "AVG(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) END) "
+        "FROM operations WHERE time >= %3 AND time < %4 "
+        "AND event_type IN ('dialog_open','dialog_close') "
         "GROUP BY 1, 3")
         .arg(fmt).arg(gran).arg(startMs).arg(endMs);
     

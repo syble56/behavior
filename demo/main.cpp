@@ -1,7 +1,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include "mainwindow.h"
-#include "core/BehaviorAnalytics.h"
+#include "core/behavior_analytics.h"
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);

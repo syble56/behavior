@@ -1,5 +1,5 @@
-#include "Database.h"
-#include "Migrator.h"
+#include "database.h"
+#include "migrator.h"
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QThread>
@@ -39,9 +39,9 @@ Database::Database() = default;
 Database::~Database() { close(); }
 
 bool Database::open(const QString& path) {
-    QMutexLocker locker(&m_initMutex);
-    m_path = path.isEmpty() ? defaultPath() : path;
-    qDebug("[Database] Path: %s", qPrintable(m_path));
+    QMutexLocker locker(&initMutex_);
+    path_ = path.isEmpty() ? defaultPath() : path;
+    qDebug("[Database] Path: %s", qPrintable(path_));
     
     // 直接在主线程创建连接（不调用connection()避免死锁）
     QString name = connectionNameForThread();
@@ -57,8 +57,8 @@ bool Database::open(const QString& path) {
         return false;
     }
     
-    db.setDatabaseName(m_path);
-    qDebug("[Database] Opening: %s", qPrintable(m_path));
+    db.setDatabaseName(path_);
+    qDebug("[Database] Opening: %s", qPrintable(path_));
     if (!db.open()) {
         qWarning("[Database] open failed: %s", qPrintable(db.lastError().text()));
         return false;
@@ -76,29 +76,29 @@ bool Database::open(const QString& path) {
         return false;
     }
     Migrator::migrate(db);
-    m_openedConnections.insert(name);
-    m_open = true;
+    openedConnections_.insert(name);
+    open_ = true;
     
     qDebug("[Database] Initialized successfully");
     return true;
 }
 
 void Database::close() {
-    QMutexLocker locker(&m_initMutex);
-    for (const QString& name : qAsConst(m_openedConnections)) {
+    QMutexLocker locker(&initMutex_);
+    for (const QString& name : qAsConst(openedConnections_)) {
         if (QSqlDatabase::contains(name)) {
             QSqlDatabase db = QSqlDatabase::database(name, false);
             if (db.isOpen()) db.close();
             QSqlDatabase::removeDatabase(name);
         }
     }
-    m_openedConnections.clear();
-    m_open = false;
+    openedConnections_.clear();
+    open_ = false;
 }
 
 bool Database::isOpen() const {
-    QMutexLocker locker(&m_initMutex);
-    return m_open;
+    QMutexLocker locker(&initMutex_);
+    return open_;
 }
 
 QSqlDatabase Database::connection() {
@@ -107,7 +107,7 @@ QSqlDatabase Database::connection() {
         QSqlDatabase db = QSqlDatabase::database(name, false);
         if (db.isOpen()) return db;
     }
-    QMutexLocker locker(&m_initMutex);
+    QMutexLocker locker(&initMutex_);
     if (QSqlDatabase::contains(name))
         QSqlDatabase::removeDatabase(name);
     
@@ -120,8 +120,8 @@ QSqlDatabase Database::connection() {
         return db;
     }
     
-    db.setDatabaseName(m_path);
-    qDebug("[Database] Opening: %s", qPrintable(m_path));
+    db.setDatabaseName(path_);
+    qDebug("[Database] Opening: %s", qPrintable(path_));
     if (!db.open()) {
         qWarning("[Behavior] Database: open failed: %s",
                  qPrintable(db.lastError().text()));
@@ -138,7 +138,7 @@ QSqlDatabase Database::connection() {
         qWarning("[Behavior] Database: schema init failed");
     }
     Migrator::migrate(db);
-    m_openedConnections.insert(name);
+    openedConnections_.insert(name);
     return db;
 }
 
@@ -154,6 +154,7 @@ bool Database::createTables(QSqlDatabase& db) {
         "  control_class TEXT, control_name TEXT, control_text TEXT, control_path TEXT,"
         "  action_name TEXT, key_sequence TEXT,"
         "  window_class TEXT, window_title TEXT, window_path TEXT, is_main_window INTEGER DEFAULT 0,"
+        "  module TEXT,"
         "  screen_x INTEGER, screen_y INTEGER, heat_region INTEGER,"
         "  duration INTEGER)",
         "CREATE TABLE IF NOT EXISTS agg_operation_stats ("
@@ -228,6 +229,7 @@ void bindOp(QSqlQuery& q, const Operation& op) {
     q.addBindValue(op.windowTitle);
     q.addBindValue(op.windowPath);
     q.addBindValue(op.isMainWindow ? 1 : 0);
+    q.addBindValue(op.module);
     q.addBindValue(op.screenX);
     q.addBindValue(op.screenY);
     q.addBindValue(op.heatRegion);
@@ -251,10 +253,11 @@ Operation readOp(const QSqlQuery& q) {
     op.windowTitle = q.value(12).toString();
     op.windowPath = q.value(13).toString();
     op.isMainWindow = q.value(14).toInt() == 1;
-    op.screenX = q.value(15).toInt();
-    op.screenY = q.value(16).toInt();
-    op.heatRegion = q.value(17).toInt();
-    if (!q.value(18).isNull()) op.duration = q.value(18).toInt();
+    op.module = q.value(15).toString();
+    op.screenX = q.value(16).toInt();
+    op.screenY = q.value(17).toInt();
+    op.heatRegion = q.value(18).toInt();
+    if (!q.value(19).isNull()) op.duration = q.value(19).toInt();
     return op;
 }
 } // namespace
@@ -271,8 +274,9 @@ bool Database::batchInsert(const QList<Operation>& ops) {
         "INSERT INTO operations (session_id,time,event_type,input_method,"
         "control_class,control_name,control_text,control_path,"
         "action_name,key_sequence,window_class,window_title,window_path,is_main_window,"
+        "module,"
         "screen_x,screen_y,heat_region,duration) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     if (!db.transaction()) return false;
     QSqlQuery q(db);
     q.prepare(SQL);
@@ -303,6 +307,7 @@ QList<Operation> Database::queryOperations(const QueryFilter& filter) {
     QString sql = "SELECT id,session_id,time,event_type,input_method,"
                   "control_class,control_name,control_text,control_path,"
                   "action_name,key_sequence,window_class,window_title,window_path,is_main_window,"
+                  "module,"
                   "screen_x,screen_y,heat_region,duration FROM operations WHERE "
                   + where.join(" AND ") + " ORDER BY time LIMIT ?";
 

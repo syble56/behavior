@@ -7,8 +7,8 @@
 #include <QFile>
 #include <QTextStream>
 
-#include "storage/Database.h"
-#include "core/Config.h"
+#include "storage/database.h"
+#include "core/config.h"
 
 using namespace ui_shared::behavior;
 

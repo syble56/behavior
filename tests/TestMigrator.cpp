@@ -4,9 +4,9 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 
-#include "storage/Database.h"
-#include "storage/Migrator.h"
-#include "core/Config.h"
+#include "storage/database.h"
+#include "storage/migrator.h"
+#include "core/config.h"
 
 using namespace ui_shared::behavior;
 
@@ -23,21 +23,21 @@ private slots:
     void testMigrateFromV1();
 
 private:
-    QTemporaryDir* m_dir = nullptr;
-    QString m_path;
+    QTemporaryDir* dir_ = nullptr;
+    QString path_;
 };
 
 void TestMigrator::init() {
-    m_dir = new QTemporaryDir;
-    m_path = m_dir->path() + "/mig_test.db";
-    Config::instance().setDatabasePath(m_path);
-    Database::instance().open(m_path);
+    dir_ = new QTemporaryDir;
+    path_ = dir_->path() + "/mig_test.db";
+    Config::instance().setDatabasePath(path_);
+    Database::instance().open(path_);
 }
 
 void TestMigrator::cleanup() {
     Database::instance().close();
-    delete m_dir;
-    m_dir = nullptr;
+    delete dir_;
+    dir_ = nullptr;
 }
 
 void TestMigrator::testFreshDbGetsCurrentVersion() {

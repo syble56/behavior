@@ -1,73 +1,73 @@
 # behavior_sdk 静态库
 
 set(BEHAVIOR_SOURCES
-    core/Config.cpp
-    core/Session.cpp
-    core/BehaviorAnalytics.cpp
+    core/config.cpp
+    core/session.cpp
+    core/behavior_analytics.cpp
 
-    collector/EventFilter.cpp
-    collector/EventProcessor.cpp
-    collector/ControlInspector.cpp
-    collector/ShortcutResolver.cpp
-    collector/DialogTracker.cpp
+    collector/event_filter.cpp
+    collector/event_processor.cpp
+    collector/control_inspector.cpp
+    collector/shortcut_resolver.cpp
+    collector/dialog_tracker.cpp
 
-    storage/Database.cpp
-    storage/OperationQueue.cpp
-    storage/BatchWriter.cpp
-    storage/Migrator.cpp
-    storage/Aggregator.cpp
-    storage/AggregationScheduler.cpp
+    storage/database.cpp
+    storage/operation_queue.cpp
+    storage/batch_writer.cpp
+    storage/migrator.cpp
+    storage/aggregator.cpp
+    storage/aggregation_scheduler.cpp
 
-    analyzer/AnalyzerRegistry.cpp
-    analyzer/FrequencyAnalyzer.cpp
-    analyzer/ModuleAnalyzer.cpp
-    analyzer/TimeAnalyzer.cpp
-    analyzer/InputAnalyzer.cpp
-    analyzer/HeatmapAnalyzer.cpp
-    analyzer/DialogAnalyzer.cpp
-    analyzer/BehaviorAnalyzer.cpp
+    analyzer/analyzer_registry.cpp
+    analyzer/frequency_analyzer.cpp
+    analyzer/module_analyzer.cpp
+    analyzer/time_analyzer.cpp
+    analyzer/input_analyzer.cpp
+    analyzer/heatmap_analyzer.cpp
+    analyzer/dialog_analyzer.cpp
+    analyzer/behavior_analyzer.cpp
 )
 
 set(BEHAVIOR_HEADERS
-    core/Types.h
-    core/Config.h
-    core/Session.h
-    core/BehaviorAnalytics.h
+    core/types.h
+    core/config.h
+    core/session.h
+    core/behavior_analytics.h
 
-    collector/EventFilter.h
-    collector/EventProcessor.h
-    collector/ControlInspector.h
-    collector/ShortcutResolver.h
-    collector/DialogTracker.h
+    collector/event_filter.h
+    collector/event_processor.h
+    collector/control_inspector.h
+    collector/shortcut_resolver.h
+    collector/dialog_tracker.h
 
-    storage/Database.h
-    storage/OperationQueue.h
-    storage/BatchWriter.h
-    storage/Migrator.h
-    storage/Aggregator.h
-    storage/AggregationScheduler.h
+    storage/database.h
+    storage/operation_queue.h
+    storage/batch_writer.h
+    storage/migrator.h
+    storage/aggregator.h
+    storage/aggregation_scheduler.h
 
-    analyzer/AnalyzerBase.h
-    analyzer/AnalyzerRegistry.h
-    analyzer/FrequencyAnalyzer.h
-    analyzer/ModuleAnalyzer.h
-    analyzer/TimeAnalyzer.h
-    analyzer/InputAnalyzer.h
-    analyzer/HeatmapAnalyzer.h
-    analyzer/DialogAnalyzer.h
-    analyzer/BehaviorAnalyzer.h
+    analyzer/analyzer_base.h
+    analyzer/analyzer_registry.h
+    analyzer/frequency_analyzer.h
+    analyzer/module_analyzer.h
+    analyzer/time_analyzer.h
+    analyzer/input_analyzer.h
+    analyzer/heatmap_analyzer.h
+    analyzer/dialog_analyzer.h
+    analyzer/behavior_analyzer.h
 )
 
 # 显式 MOC 处理（含 Q_OBJECT 的头文件），避免 AUTOMOC 在 MinGW 上的 autogen 问题
 set(BEHAVIOR_MOC_HEADERS
-    core/BehaviorAnalytics.h
-    core/Session.h
-    collector/EventFilter.h
-    collector/EventProcessor.h
-    storage/BatchWriter.h
-    storage/Aggregator.h
-    storage/AggregationScheduler.h
-    analyzer/BehaviorAnalyzer.h
+    core/behavior_analytics.h
+    core/session.h
+    collector/event_filter.h
+    collector/event_processor.h
+    storage/batch_writer.h
+    storage/aggregator.h
+    storage/aggregation_scheduler.h
+    analyzer/behavior_analyzer.h
 )
 
 if(QT_VER EQUAL 6)

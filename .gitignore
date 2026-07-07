@@ -50,3 +50,7 @@ Thumbs.db
 
 # OMC state
 .omc/
+
+# Temp query tool
+tests/query_dialog_today.cpp
+

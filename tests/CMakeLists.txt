@@ -95,3 +95,12 @@ target_link_libraries(check_dialog
         ${QT_PREFIX}::Sql
         ${QT_PREFIX}::Core
 )
+
+add_executable(query_dialog_today query_dialog_today.cpp)
+set_target_properties(query_dialog_today PROPERTIES AUTOMOC ON)
+target_link_libraries(query_dialog_today
+    PRIVATE
+        behavior_sdk
+        ${QT_PREFIX}::Sql
+        ${QT_PREFIX}::Core
+)

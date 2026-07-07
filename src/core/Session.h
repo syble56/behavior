@@ -2,7 +2,7 @@
 
 #include <QObject>
 #include <QString>
-#include "Types.h"
+#include "types.h"
 
 namespace ui_shared {
 namespace behavior {
@@ -18,15 +18,15 @@ public:
     // 结束会话，填充 endTime/duration，返回会话记录
     Session end();
     // 当前会话
-    const Session& current() const { return m_current; }
-    bool isActive() const { return m_active; }
+    const Session& current() const { return current_; }
+    bool isActive() const { return active_; }
 
     // 生成 UUID（无花括号）
     static QString generateId();
 
 private:
-    Session m_current;
-    bool m_active = false;
+    Session current_;
+    bool active_ = false;
 };
 
 } // namespace behavior

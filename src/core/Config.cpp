@@ -1,4 +1,4 @@
-#include "Config.h"
+#include "config.h"
 
 namespace ui_shared {
 namespace behavior {
@@ -11,16 +11,16 @@ Config& Config::instance() {
 Config::Config() = default;
 
 void Config::addIgnoreControl(const QString& className) {
-    if (!m_ignoreControls.contains(className))
-        m_ignoreControls.append(className);
+    if (!ignoreControls_.contains(className))
+        ignoreControls_.append(className);
 }
 
 void Config::removeIgnoreControl(const QString& className) {
-    m_ignoreControls.removeAll(className);
+    ignoreControls_.removeAll(className);
 }
 
 bool Config::shouldIgnore(const QString& className) const {
-    return m_ignoreControls.contains(className);
+    return ignoreControls_.contains(className);
 }
 
 } // namespace behavior

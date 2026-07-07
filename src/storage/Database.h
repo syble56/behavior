@@ -5,7 +5,7 @@
 #include <QString>
 #include <QList>
 #include <QSet>
-#include "core/Types.h"
+#include "core/types.h"
 
 namespace ui_shared {
 namespace behavior {
@@ -20,7 +20,7 @@ public:
     bool isOpen() const;
 
     // 当前线程专属连接（SQLite连接不可跨线程复用）
-    // 首次调用时以 m_path 打开并建表/建索引
+    // 首次调用时以 path_ 打开并建表/建索引
     QSqlDatabase connection();
 
     // 插入
@@ -49,10 +49,10 @@ private:
     bool createTables(QSqlDatabase& db);
     bool createIndexes(QSqlDatabase& db);
 
-    QString m_path;
-    mutable QMutex m_initMutex;
-    QSet<QString> m_openedConnections;  // 已建好的连接名
-    bool m_open = false;
+    QString path_;
+    mutable QMutex initMutex_;
+    QSet<QString> openedConnections_;  // 已建好的连接名
+    bool open_ = false;
 };
 
 } // namespace behavior

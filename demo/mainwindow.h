@@ -29,17 +29,17 @@ private:
     void setupRightPanel();
     void updateCharts();
     
-    QWidget* m_frequencyChart = nullptr;
-    QWidget* m_timeChart = nullptr;
-    QWidget* m_inputChart = nullptr;
-    QWidget* m_heatmapChart = nullptr;
+    QWidget* frequencyChart_ = nullptr;
+    QWidget* timeChart_ = nullptr;
+    QWidget* inputChart_ = nullptr;
+    QWidget* heatmapChart_ = nullptr;
     
-    QPlainTextEdit* m_logView = nullptr;
+    QPlainTextEdit* logView_ = nullptr;
     
-    QLabel* m_statusLabel = nullptr;
-    QLabel* m_sessionLabel = nullptr;
+    QLabel* statusLabel_ = nullptr;
+    QLabel* sessionLabel_ = nullptr;
     
-    QGroupBox* m_rightPanel = nullptr;
+    QGroupBox* rightPanel_ = nullptr;
     
-    bool m_measuring = false;
+    bool measuring_ = false;
 };

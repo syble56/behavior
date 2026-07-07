@@ -5,11 +5,11 @@
 #include <QThread>
 #include <QElapsedTimer>
 
-#include "storage/Database.h"
-#include "storage/OperationQueue.h"
-#include "storage/BatchWriter.h"
-#include "core/Types.h"
-#include "core/Config.h"
+#include "storage/database.h"
+#include "storage/operation_queue.h"
+#include "storage/batch_writer.h"
+#include "core/types.h"
+#include "core/config.h"
 
 using namespace ui_shared::behavior;
 
@@ -40,23 +40,23 @@ private slots:
     void testStopFlushesRemaining();
 
 private:
-    QTemporaryDir* m_dir = nullptr;
-    QString m_path;
+    QTemporaryDir* dir_ = nullptr;
+    QString path_;
 };
 
 void TestBatchWriter::init() {
-    m_dir = new QTemporaryDir;
-    m_path = m_dir->path() + "/bw_test.db";
-    Config::instance().setDatabasePath(m_path);
+    dir_ = new QTemporaryDir;
+    path_ = dir_->path() + "/bw_test.db";
+    Config::instance().setDatabasePath(path_);
     Config::instance().setBatchSize(10);
     Config::instance().setBatchTimeoutMs(100);
-    Database::instance().open(m_path);
+    Database::instance().open(path_);
 }
 
 void TestBatchWriter::cleanup() {
     Database::instance().close();
-    delete m_dir;
-    m_dir = nullptr;
+    delete dir_;
+    dir_ = nullptr;
 }
 
 void TestBatchWriter::testStartStop() {

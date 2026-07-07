@@ -6,8 +6,8 @@
 #include <thread>
 #include <vector>
 
-#include "storage/OperationQueue.h"
-#include "core/Types.h"
+#include "storage/operation_queue.h"
+#include "core/types.h"
 
 using namespace ui_shared::behavior;
 

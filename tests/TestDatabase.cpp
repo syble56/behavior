@@ -8,9 +8,9 @@
 #include <QThread>
 #include <thread>
 
-#include "storage/Database.h"
-#include "core/Types.h"
-#include "core/Config.h"
+#include "storage/database.h"
+#include "core/types.h"
+#include "core/config.h"
 
 using namespace ui_shared::behavior;
 
@@ -86,21 +86,21 @@ private slots:
     void testConnectionPerThread();
 
 private:
-    QTemporaryDir* m_dir = nullptr;
-    QString m_path;
+    QTemporaryDir* dir_ = nullptr;
+    QString path_;
 };
 
 void TestDatabase::init() {
-    m_dir = new QTemporaryDir;
-    m_path = tempDbPath(*m_dir);
-    Config::instance().setDatabasePath(m_path);
-    QVERIFY(Database::instance().open(m_path));
+    dir_ = new QTemporaryDir;
+    path_ = tempDbPath(*dir_);
+    Config::instance().setDatabasePath(path_);
+    QVERIFY(Database::instance().open(path_));
 }
 
 void TestDatabase::cleanup() {
     Database::instance().close();
-    delete m_dir;
-    m_dir = nullptr;
+    delete dir_;
+    dir_ = nullptr;
 }
 
 // ========== Schema ==========
@@ -135,7 +135,7 @@ void TestDatabase::testOpenCreatesIndexes() {
 
 void TestDatabase::testReopenSamePath() {
     Database::instance().close();
-    QVERIFY(Database::instance().open(m_path));
+    QVERIFY(Database::instance().open(path_));
     QVERIFY(Database::instance().isOpen());
     // 数据应该还在
     QSqlDatabase db = Database::instance().connection();

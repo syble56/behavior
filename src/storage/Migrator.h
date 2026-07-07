@@ -7,7 +7,7 @@ namespace behavior {
 
 class Migrator {
 public:
-    static constexpr int CURRENT_VERSION = 2;
+    static constexpr int CURRENT_VERSION = 3;
 
     static bool migrate(QSqlDatabase& db);
 
@@ -16,6 +16,7 @@ public:
 
 private:
     static bool migrateV1toV2(QSqlDatabase& db);
+    static bool migrateV2toV3(QSqlDatabase& db);
 };
 
 } // namespace behavior

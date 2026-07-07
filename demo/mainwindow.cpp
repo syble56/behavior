@@ -1,9 +1,9 @@
 #include "mainwindow.h"
-#include "core/BehaviorAnalytics.h"
-#include "core/Types.h"
-#include "analyzer/BehaviorAnalyzer.h"
-#include "storage/Database.h"
-#include "storage/Aggregator.h"
+#include "core/behavior_analytics.h"
+#include "core/types.h"
+#include "analyzer/behavior_analyzer.h"
+#include "storage/database.h"
+#include "storage/aggregator.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -42,12 +42,16 @@
 #include <QSqlQuery>
 #include <QSqlDatabase>
 #include <QSqlError>
+#include <algorithm>
 
 // Qwt
 #include <qwt_plot.h>
 #include <qwt_plot_barchart.h>
 #include <qwt_plot_curve.h>
 #include <qwt_plot_histogram.h>
+#include <qwt_plot_marker.h>
+#include <qwt_plot_grid.h>
+#include <qwt_symbol.h>
 #include <qwt_legend.h>
 #include <qwt_column_symbol.h>
 #include <qwt_series_data.h>
@@ -60,20 +64,20 @@ using namespace ui_shared::behavior;
 // 自定义 X 轴刻度绘制，显示操作名称或日期
 class ActionScaleDraw : public QwtScaleDraw {
 public:
-    explicit ActionScaleDraw(const QStringList& labels) : m_labels(labels) {
+    explicit ActionScaleDraw(const QStringList& labels) : labels_(labels) {
         enableComponent(QwtScaleDraw::Ticks, false);
         enableComponent(QwtScaleDraw::Backbone, false);
         
         // 检测是否为日期标签（格式：yyyy-MM-dd）
-        m_isDateFormat = !labels.isEmpty() && labels.first().contains(QRegExp("^\\d{4}-\\d{2}-\\d{2}$"));
+        isDateFormat_ = !labels.isEmpty() && labels.first().contains(QRegExp("^\\d{4}-\\d{2}-\\d{2}$"));
     }
     
     QwtText label(double value) const override {
         int idx = static_cast<int>(value + 0.5);  // 四舍五入
-        if (idx >= 0 && idx < m_labels.size()) {
-            QString name = m_labels[idx];
+        if (idx >= 0 && idx < labels_.size()) {
+            QString name = labels_[idx];
             
-            if (m_isDateFormat) {
+            if (isDateFormat_) {
                 // 日期格式：显示为 MM-DD（去掉年份）
                 QStringList parts = name.split('-');
                 if (parts.size() == 3) {
@@ -92,9 +96,55 @@ public:
     }
     
 private:
-    QStringList m_labels;
-    bool m_isDateFormat = false;
+    QStringList labels_;
+    bool isDateFormat_ = false;
 };
+
+// 统一设置 QwtPlot 样式
+void stylePlot(QwtPlot* plot) {
+    plot->setCanvasBackground(QColor("#3C3F44"));
+    plot->setContentsMargins(8, 8, 8, 8);
+    
+    // 字体
+    QFont axisFont("Microsoft YaHei", 9);
+    QFont titleFont("Microsoft YaHei", 10, QFont::DemiBold);
+    plot->setAxisFont(QwtPlot::xBottom, axisFont);
+    plot->setAxisFont(QwtPlot::yLeft, axisFont);
+    
+    // 轴标题 — 白色
+    for (int axis = 0; axis < QwtPlot::axisCnt; ++axis) {
+        QwtText title = plot->axisTitle(axis);
+        title.setFont(titleFont);
+        title.setColor(QColor("#E2E8F0"));
+        plot->setAxisTitle(axis, title);
+    }
+    
+    // 轴刻度文字 — 浅灰白
+    for (int axis = 0; axis < QwtPlot::axisCnt; ++axis) {
+        QwtScaleDraw* sd = plot->axisScaleDraw(axis);
+        if (sd) {
+            sd->setTickLength(QwtScaleDiv::MajorTick, (axis == QwtPlot::xBottom) ? 0 : 4);
+            sd->setTickLength(QwtScaleDiv::MinorTick, 0);
+        }
+    }
+    
+    // 网格 — 深灰虚线
+    auto* grid = new QwtPlotGrid();
+    grid->setMajorPen(QPen(QColor("#4A4D52"), 1, Qt::DotLine));
+    grid->setMinorPen(QPen(Qt::NoPen));
+    grid->attach(plot);
+    
+    plot->setStyleSheet("QwtPlot { border: none; } QwtScaleWidget { color: #CBD5E1; }");
+}
+
+// 给柱状图设置渐变色
+void styleBarChart(QwtPlotBarChart* chart, const QColor& baseColor = QColor("#3B82F6")) {
+    auto* sym = new QwtColumnSymbol(QwtColumnSymbol::Box);
+    sym->setLineWidth(0);
+    sym->setPalette(QPalette(baseColor));
+    chart->setSymbol(sym);
+    chart->setMargin(3);
+}
 
 // 简单的饼图绘制控件
 class PieChartWidget : public QWidget {
@@ -105,8 +155,8 @@ public:
     }
 
     void setData(const QStringList& labels, const QVector<double>& values) {
-        m_labels = labels;
-        m_values = values;
+        labels_ = labels;
+        values_ = values;
         update();
     }
 
@@ -121,14 +171,14 @@ protected:
         int radius = side / 2;
 
         double total = 0;
-        for (double v : m_values) total += v;
+        for (double v : values_) total += v;
         if (total <= 0) {
-            p.setPen(Qt::gray);
+            p.setPen(QColor("#94A3B8"));
             p.drawText(rect(), Qt::AlignCenter, "无数据");
             return;
         }
 
-        // 颜色列表
+        // 颜色列表 — 现代配色
         static const QColor colors[] = {
             QColor("#3B82F6"), QColor("#EF4444"), QColor("#10B981"),
             QColor("#F59E0B"), QColor("#8B5CF6"), QColor("#EC4899"),
@@ -139,8 +189,8 @@ protected:
         double startAngle = 90.0 * 16;  // 从12点钟方向开始
         QRectF pieRect(cx - radius, cy - radius, radius * 2, radius * 2);
 
-        for (int i = 0; i < m_values.size(); ++i) {
-            double span = m_values[i] / total * 360.0 * 16;
+        for (int i = 0; i < values_.size(); ++i) {
+            double span = values_[i] / total * 360.0 * 16;
             p.setBrush(colors[i % 8]);
             p.setPen(QPen(Qt::white, 2));
             p.drawPie(pieRect, static_cast<int>(startAngle), static_cast<int>(span));
@@ -149,23 +199,23 @@ protected:
 
         // 画图例
         int legendX = cx + radius + 20;
-        int legendY = cy - m_values.size() * 20 / 2;
+        int legendY = cy - values_.size() * 22 / 2;
         p.setFont(QFont("Microsoft YaHei", 9));
-        for (int i = 0; i < m_values.size(); ++i) {
-            QRectF colorRect(legendX, legendY + i * 20, 12, 12);
+        for (int i = 0; i < values_.size(); ++i) {
+            QRectF colorRect(legendX, legendY + i * 22, 14, 14);
             p.setBrush(colors[i % 8]);
             p.setPen(Qt::NoPen);
-            p.drawRect(colorRect);
-            p.setPen(Qt::black);
-            QString pct = QString("%1 (%2%)").arg(m_labels[i])
-                .arg(qRound(m_values[i] / total * 100));
-            p.drawText(QPoint(legendX + 18, legendY + i * 20 + 11), pct);
+            p.drawRoundedRect(colorRect, 3, 3);
+            p.setPen(QColor("#E2E8F0"));
+            QString pct = QString("%1 (%2%)").arg(labels_[i])
+                .arg(qRound(values_[i] / total * 100));
+            p.drawText(QPoint(legendX + 20, legendY + i * 22 + 12), pct);
         }
     }
 
 private:
-    QStringList m_labels;
-    QVector<double> m_values;
+    QStringList labels_;
+    QVector<double> values_;
 };
 
 // 简单的热力图绘制控件
@@ -177,8 +227,8 @@ public:
     }
     
     void setData(const QMap<int, int>& regions, int maxCount) {
-        m_regions = regions;
-        m_maxCount = qMax(1, maxCount);
+        regions_ = regions;
+        maxCount_ = qMax(1, maxCount);
         update();
     }
     
@@ -192,46 +242,59 @@ protected:
         int cellH = r.height() / 10;
         
         // 绘制标题
-        p.drawText(rect(), Qt::AlignHCenter | Qt::AlignTop, "主窗口点击热力图");
+        p.setFont(QFont("Microsoft YaHei", 11, QFont::DemiBold));
+        p.setPen(QColor("#E2E8F0"));
+        p.drawText(rect(), Qt::AlignHCenter | Qt::AlignTop, "Main Window Click Heatmap");
         
         // 绘制网格
         for (int row = 0; row < 10; ++row) {
             for (int col = 0; col < 10; ++col) {
                 int region = row * 10 + col;
-                int count = m_regions.value(region, 0);
+                int count = regions_.value(region, 0);
                 
-                // 计算颜色（从白到红）
-                double intensity = (m_maxCount > 0) ? (double)count / m_maxCount : 0;
-                QColor color = QColor::fromHsvF(0, intensity, 1 - intensity * 0.3);
+                // 计算颜色（从浅蓝到深红）
+                double intensity = (maxCount_ > 0) ? (double)count / maxCount_ : 0;
+                QColor color;
+                if (count == 0) {
+                    color = QColor("#3C3F44");
+                } else {
+                    // 从蓝色渐变到红色
+                    int r = static_cast<int>(59 + (239 - 59) * intensity);
+                    int g = static_cast<int>(130 + (68 - 130) * intensity);
+                    int b = static_cast<int>(246 + (68 - 246) * intensity);
+                    color = QColor(r, g, b);
+                }
                 
                 QRect cell(r.left() + col * cellW, r.top() + row * cellH, cellW, cellH);
                 p.fillRect(cell, color);
-                p.setPen(Qt::gray);
+                p.setPen(QPen(QColor("#4A4D52"), 1));
                 p.drawRect(cell);
                 
                 // 显示数值
                 if (count > 0) {
-                    p.setPen(Qt::black);
+                    p.setPen(intensity > 0.5 ? Qt::white : QColor("#E2E8F0"));
+                    p.setFont(QFont("Microsoft YaHei", 8));
                     p.drawText(cell, Qt::AlignCenter, QString::number(count));
                 }
             }
         }
         
         // 绘制坐标轴标签
-        p.setPen(Qt::black);
+        p.setPen(QColor("#94A3B8"));
+        p.setFont(QFont("Microsoft YaHei", 9));
         for (int i = 0; i < 10; ++i) {
             // X轴（列）
             p.drawText(r.left() + i * cellW + cellW/2 - 5, r.bottom() + 15, QString::number(i));
             // Y轴（行）
             p.drawText(r.left() - 20, r.top() + i * cellH + cellH/2 + 5, QString::number(i));
         }
-        p.drawText(r.left() - 35, r.top() + r.height()/2, "行");
-        p.drawText(r.left() + r.width()/2 - 10, r.bottom() + 30, "列");
+        p.drawText(r.left() - 35, r.top() + r.height()/2, "Row");
+        p.drawText(r.left() + r.width()/2 - 10, r.bottom() + 30, "Col");
     }
     
 private:
-    QMap<int, int> m_regions;
-    int m_maxCount = 1;
+    QMap<int, int> regions_;
+    int maxCount_ = 1;
 };
 
 // 设置对话框
@@ -354,129 +417,184 @@ class AnalysisDialog : public QDialog {
     Q_OBJECT
 public:
     explicit AnalysisDialog(QWidget* parent = nullptr) : QDialog(parent) {
-        setWindowTitle("行为分析结果");
-        setMinimumSize(1000, 750);
+        setWindowTitle("Behavior Analysis");
+        setMinimumSize(1100, 800);
         
         // 应用数据仪表盘样式
         setStyleSheet(R"(
             QDialog {
-                background-color: #F8FAFC;
+                background-color: #32353A;
             }
             QGroupBox {
                 font-weight: 600;
                 font-size: 13px;
-                color: #1E3A8A;
-                border: 1px solid #DBEAFE;
-                border-radius: 6px;
+                color: #E2E8F0;
+                border: 1px solid #4A4D52;
+                border-radius: 8px;
                 margin-top: 12px;
-                padding-top: 8px;
-                background-color: white;
+                padding-top: 10px;
+                background-color: #3C3F44;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 8px;
-                background-color: white;
+                padding: 2px 10px;
+                background-color: #3C3F44;
+                color: #CBD5E1;
             }
             QLabel {
-                color: #1E3A8A;
+                color: #E2E8F0;
                 font-size: 13px;
             }
+            QLabel#statCard {
+                background-color: #3C3F44;
+                border: 1px solid #4A4D52;
+                border-radius: 8px;
+                padding: 12px 16px;
+                font-size: 13px;
+                color: #94A3B8;
+            }
+            QLabel#statValue {
+                font-size: 22px;
+                font-weight: 700;
+                color: #FFFFFF;
+            }
+            QLabel#statTitle {
+                font-size: 11px;
+                font-weight: 500;
+                color: #94A3B8;
+                letter-spacing: 1px;
+            }
             QPushButton {
-                background-color: #E9EEF6;
-                color: #1E3A8A;
-                border: 1px solid #DBEAFE;
-                border-radius: 4px;
-                padding: 6px 12px;
+                background-color: #3C3F44;
+                color: #E2E8F0;
+                border: 1px solid #4A4D52;
+                border-radius: 6px;
+                padding: 7px 14px;
                 font-size: 13px;
                 font-weight: 500;
             }
             QPushButton:hover {
-                background-color: #DBEAFE;
-                border-color: #3B82F6;
+                background-color: #4A4D52;
+                border-color: #64748B;
             }
             QPushButton:pressed {
-                background-color: #1E40AF;
-                color: white;
+                background-color: #5A5D62;
             }
             QPushButton:default {
-                background-color: #1E40AF;
+                background-color: #2563EB;
                 color: white;
-                border-color: #1E40AF;
+                border-color: #2563EB;
             }
             QPushButton:default:hover {
-                background-color: #3B82F6;
+                background-color: #1D4ED8;
             }
             QDateTimeEdit {
-                background-color: white;
-                border: 1px solid #DBEAFE;
-                border-radius: 4px;
-                padding: 4px 8px;
-                color: #1E3A8A;
+                background-color: #3C3F44;
+                border: 1px solid #4A4D52;
+                border-radius: 6px;
+                padding: 5px 10px;
+                color: #FFFFFF;
+                font-size: 13px;
             }
             QDateTimeEdit:focus {
                 border-color: #3B82F6;
             }
             QTabWidget::pane {
-                border: 1px solid #DBEAFE;
-                background-color: white;
-                border-radius: 6px;
+                border: 1px solid #4A4D52;
+                background-color: #3C3F44;
+                border-radius: 8px;
+                top: -1px;
             }
             QTabBar::tab {
-                background-color: #E9EEF6;
-                color: #1E3A8A;
-                border: 1px solid #DBEAFE;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
+                background-color: #32353A;
+                color: #94A3B8;
+                border: 1px solid #4A4D52;
+                border-bottom: none;
+                padding: 9px 18px;
+                margin-right: 3px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                font-size: 13px;
+                font-weight: 500;
             }
             QTabBar::tab:selected {
-                background-color: white;
-                border-bottom-color: white;
+                background-color: #3C3F44;
+                color: #FFFFFF;
+                border-bottom-color: #3C3F44;
                 font-weight: 600;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #DBEAFE;
+                background-color: #4A4D52;
+                color: #E2E8F0;
             }
             QTableWidget {
-                background-color: white;
+                background-color: #3C3F44;
+                alternate-background-color: #34373C;
                 border: none;
-                gridline-color: #E9EEF6;
+                gridline-color: #4A4D52;
                 font-size: 13px;
+                border-radius: 8px;
             }
             QTableWidget::item {
-                padding: 6px;
-                color: #1E3A8A;
+                padding: 8px 6px;
+                color: #E2E8F0;
             }
             QTableWidget::item:selected {
-                background-color: #DBEAFE;
-                color: #1E3A8A;
+                background-color: #2563EB;
+                color: #FFFFFF;
             }
             QTableWidget::item:hover {
-                background-color: #F8FAFC;
+                background-color: #4A4D52;
             }
             QHeaderView::section {
-                background-color: #F8FAFC;
-                color: #1E3A8A;
+                background-color: #32353A;
+                color: #CBD5E1;
                 font-weight: 600;
                 font-size: 12px;
-                padding: 8px;
+                padding: 10px 8px;
                 border: none;
-                border-bottom: 2px solid #DBEAFE;
+                border-bottom: 2px solid #4A4D52;
+            }
+            QHeaderView::section:vertical {
+                background-color: #32353A;
+                color: #94A3B8;
+                border-right: 1px solid #4A4D52;
+                border-bottom: none;
             }
             QScrollBar:vertical {
-                background-color: #F8FAFC;
+                background-color: #32353A;
                 width: 10px;
                 border-radius: 5px;
+                margin: 0;
             }
             QScrollBar::handle:vertical {
-                background-color: #DBEAFE;
+                background-color: #64748B;
                 border-radius: 5px;
-                min-height: 20px;
+                min-height: 30px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: #3B82F6;
+                background-color: #94A3B8;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QScrollBar:horizontal {
+                background-color: #32353A;
+                height: 10px;
+                border-radius: 5px;
+                margin: 0;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #64748B;
+                border-radius: 5px;
+                min-width: 30px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: #94A3B8;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0;
             }
         )");
         
@@ -485,32 +603,32 @@ public:
         lay->setContentsMargins(16, 16, 16, 16);
         
         // 时间范围选择（只显示日期）
-        auto* timeGroup = new QGroupBox("统计区间", this);
+        auto* timeGroup = new QGroupBox("Date Range", this);
         auto* timeLay = new QHBoxLayout(timeGroup);
         timeLay->setSpacing(8);
         
-        timeLay->addWidget(new QLabel("开始日期:", this));
-        m_startDate = new QDateEdit(this);
-        m_startDate->setCalendarPopup(true);
-        m_startDate->setDate(QDate::currentDate().addDays(-7));
-        m_startDate->setDisplayFormat("yyyy-MM-dd");
-        timeLay->addWidget(m_startDate);
+        timeLay->addWidget(new QLabel("Start:", this));
+        startDate_ = new QDateEdit(this);
+        startDate_->setCalendarPopup(true);
+        startDate_->setDate(QDate::currentDate().addDays(-7));
+        startDate_->setDisplayFormat("yyyy-MM-dd");
+        timeLay->addWidget(startDate_);
         
         timeLay->addSpacing(12);
-        timeLay->addWidget(new QLabel("结束日期:", this));
-        m_endDate = new QDateEdit(this);
-        m_endDate->setCalendarPopup(true);
-        m_endDate->setDate(QDate::currentDate());
-        m_endDate->setDisplayFormat("yyyy-MM-dd");
-        timeLay->addWidget(m_endDate);
+        timeLay->addWidget(new QLabel("End:", this));
+        endDate_ = new QDateEdit(this);
+        endDate_->setCalendarPopup(true);
+        endDate_->setDate(QDate::currentDate());
+        endDate_->setDisplayFormat("yyyy-MM-dd");
+        timeLay->addWidget(endDate_);
         
         timeLay->addSpacing(16);
         
         // 快捷按钮
-        auto* btnToday = new QPushButton("今天", this);
-        auto* btnLast3Days = new QPushButton("最近3天", this);
-        auto* btnLastWeek = new QPushButton("最近7天", this);
-        auto* btnLastMonth = new QPushButton("最近30天", this);
+        auto* btnToday = new QPushButton("Today", this);
+        auto* btnLast3Days = new QPushButton("Last 3 Days", this);
+        auto* btnLastWeek = new QPushButton("Last 7 Days", this);
+        auto* btnLastMonth = new QPushButton("Last 30 Days", this);
         timeLay->addWidget(btnToday);
         timeLay->addWidget(btnLast3Days);
         timeLay->addWidget(btnLastWeek);
@@ -518,21 +636,23 @@ public:
         
         timeLay->addSpacing(8);
         
-        auto* btnAnalyze = new QPushButton("分析", this);
+        auto* btnAnalyze = new QPushButton("Analyze", this);
         btnAnalyze->setDefault(true);
         btnAnalyze->setStyleSheet(R"(
             QPushButton {
-                background-color: #D97706;
+                background-color: #2563EB;
                 color: white;
                 border: none;
-                padding: 8px 20px;
+                border-radius: 6px;
+                padding: 8px 24px;
                 font-weight: 600;
+                font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #B45309;
+                background-color: #1D4ED8;
             }
             QPushButton:pressed {
-                background-color: #92400E;
+                background-color: #1E40AF;
             }
         )");
         timeLay->addWidget(btnAnalyze);
@@ -541,39 +661,86 @@ public:
         
         lay->addWidget(timeGroup);
         
+        // 汇总统计卡片
+        auto* cardLay = new QHBoxLayout();
+        cardLay->setSpacing(10);
+        
+        auto* card1 = new QLabel(this);
+        card1->setObjectName("statCard");
+        card1->setText("<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Total Events</span></td></tr><tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>0</span></td></tr></table>");
+        
+        auto* card2 = new QLabel(this);
+        card2->setObjectName("statCard");
+        card2->setText("<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Active Days</span></td></tr><tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>0</span></td></tr></table>");
+        
+        auto* card3 = new QLabel(this);
+        card3->setObjectName("statCard");
+        card3->setText("<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Top Module</span></td></tr><tr><td><span style='font-size:16px;font-weight:600;color:#FFFFFF;'>-</span></td></tr></table>");
+        
+        auto* card4 = new QLabel(this);
+        card4->setObjectName("statCard");
+        card4->setText("<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Dialog Opens</span></td></tr><tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>0</span></td></tr></table>");
+        
+        statCards_ = {card1, card2, card3, card4};
+        for (auto* card : statCards_) {
+            card->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+            card->setMinimumHeight(62);
+            card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            cardLay->addWidget(card);
+        }
+        lay->addLayout(cardLay);
+        
         // 结果显示区域（使用 tab）
-        m_tabWidget = new QTabWidget(this);
+        tabWidget_ = new QTabWidget(this);
         
         // 操作频率 tab - 柱状图
-        m_operationChart = new QwtPlot(this);
-        m_operationChart->setCanvasBackground(Qt::white);
-        m_operationChart->setAxisTitle(QwtPlot::yLeft, "次数");
-        m_operationChart->setAxisTitle(QwtPlot::xBottom, "操作");
-        m_tabWidget->addTab(m_operationChart, "操作频率");
+        operationChart_ = new QwtPlot(this);
+        stylePlot(operationChart_);
+        operationChart_->setAxisTitle(QwtPlot::yLeft, "Count");
+        operationChart_->setAxisTitle(QwtPlot::xBottom, "Action");
+        tabWidget_->addTab(operationChart_, "Operations");
         
         // 模块统计 tab - 柱状图
-        m_moduleChart = new QwtPlot(this);
-        m_moduleChart->setCanvasBackground(Qt::white);
-        m_moduleChart->setAxisTitle(QwtPlot::yLeft, "次数");
-        m_moduleChart->setAxisTitle(QwtPlot::xBottom, "模块");
-        m_tabWidget->addTab(m_moduleChart, "模块统计");
+        moduleChart_ = new QwtPlot(this);
+        stylePlot(moduleChart_);
+        moduleChart_->setAxisTitle(QwtPlot::yLeft, "Count");
+        moduleChart_->setAxisTitle(QwtPlot::xBottom, "Module");
+        tabWidget_->addTab(moduleChart_, "Modules");
         
         // 输入方式 tab - 饼图
-        m_inputChart = new PieChartWidget(this);
-        m_tabWidget->addTab(m_inputChart, "输入方式");
+        inputChart_ = new PieChartWidget(this);
+        tabWidget_->addTab(inputChart_, "Input Methods");
         
         // 时间分布 tab - 折线图
-        m_timeChart = new QwtPlot(this);
-        m_timeChart->setCanvasBackground(Qt::white);
-        m_timeChart->setAxisTitle(QwtPlot::yLeft, "次数");
-        m_timeChart->setAxisTitle(QwtPlot::xBottom, "时间");
-        m_tabWidget->addTab(m_timeChart, "时间分布");
+        timeChart_ = new QwtPlot(this);
+        stylePlot(timeChart_);
+        timeChart_->setAxisTitle(QwtPlot::yLeft, "Count");
+        timeChart_->setAxisTitle(QwtPlot::xBottom, "Date");
+        tabWidget_->addTab(timeChart_, "Time Distribution");
         
         // 热力图 tab
-        m_heatmapWidget = new HeatmapWidget(this);
-        m_tabWidget->addTab(m_heatmapWidget, "点击热力图");
+        heatmapWidget_ = new HeatmapWidget(this);
+        tabWidget_->addTab(heatmapWidget_, "Click Heatmap");
         
-        lay->addWidget(m_tabWidget);
+        // 对话框分析 tab - 表格
+        dialogTable_ = new QTableWidget(this);
+        dialogTable_->setColumnCount(7);
+        dialogTable_->setHorizontalHeaderLabels({"Dialog", "Opens", "Avg Duration", "Median", "Min", "Max", "Instant Close %"});
+        dialogTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+        dialogTable_->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft);
+        dialogTable_->setAlternatingRowColors(true);
+        dialogTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        tabWidget_->addTab(dialogTable_, "Dialog Analysis");
+        
+        // 对话框散点图 tab - 频率 × 时长
+        dialogScatter_ = new QwtPlot(this);
+        stylePlot(dialogScatter_);
+        dialogScatter_->setAxisTitle(QwtPlot::xBottom, "Opens");
+        dialogScatter_->setAxisTitle(QwtPlot::yLeft, "Avg Duration (s)");
+        dialogScatter_->setMinimumSize(500, 400);
+        tabWidget_->addTab(dialogScatter_, "Dialog Distribution");
+        
+        lay->addWidget(tabWidget_);
         
         // 底部按钮
         auto* btns = new QDialogButtonBox(QDialogButtonBox::Close, this);
@@ -582,20 +749,20 @@ public:
         
         // 连接信号
         connect(btnToday, &QPushButton::clicked, this, [this]{
-            m_endDate->setDate(QDate::currentDate());
-            m_startDate->setDate(QDate::currentDate());
+            endDate_->setDate(QDate::currentDate());
+            startDate_->setDate(QDate::currentDate());
         });
         connect(btnLast3Days, &QPushButton::clicked, this, [this]{
-            m_endDate->setDate(QDate::currentDate());
-            m_startDate->setDate(QDate::currentDate().addDays(-2));
+            endDate_->setDate(QDate::currentDate());
+            startDate_->setDate(QDate::currentDate().addDays(-2));
         });
         connect(btnLastWeek, &QPushButton::clicked, this, [this]{
-            m_endDate->setDate(QDate::currentDate());
-            m_startDate->setDate(QDate::currentDate().addDays(-6));
+            endDate_->setDate(QDate::currentDate());
+            startDate_->setDate(QDate::currentDate().addDays(-6));
         });
         connect(btnLastMonth, &QPushButton::clicked, this, [this]{
-            m_endDate->setDate(QDate::currentDate());
-            m_startDate->setDate(QDate::currentDate().addDays(-29));
+            endDate_->setDate(QDate::currentDate());
+            startDate_->setDate(QDate::currentDate().addDays(-29));
         });
         connect(btnAnalyze, &QPushButton::clicked, this, &AnalysisDialog::onAnalyze);
         
@@ -606,13 +773,13 @@ public:
 private slots:
     void onAnalyze() {
         // 获取日期范围（开始时间为当天 00:00:00，结束时间为当天 23:59:59）
-        QDateTime start(m_startDate->date(), QTime(0, 0, 0));
-        QDateTime end(m_endDate->date(), QTime(23, 59, 59));
+        QDateTime start(startDate_->date(), QTime(0, 0, 0));
+        QDateTime end(endDate_->date(), QTime(23, 59, 59));
         
         auto& db = ui_shared::behavior::Database::instance();
         QSqlDatabase sqlDb = db.connection();
         if (!sqlDb.isOpen()) {
-            QMessageBox::warning(this, "错误", "数据库未打开");
+            QMessageBox::warning(this, "Error", "Database not open");
             return;
         }
         
@@ -671,9 +838,63 @@ private slots:
                  << ", range=" << aggMinBucket << "to" << aggMaxBucket;
         
         // 更新窗口标题，显示数据情况
-        QString title = QString("行为分析结果 - 区间内: %1 条, 总计: %2 条, 聚合: %3 条")
+        QString title = QString("Behavior Analysis - Range: %1, Total: %2, Aggregated: %3")
             .arg(countInRange).arg(totalOps).arg(aggCount);
         setWindowTitle(title);
+        
+        // 更新汇总卡片
+        {
+            // 活跃天数
+            QSqlQuery activeDayQuery(sqlDb);
+            activeDayQuery.prepare(
+                "SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
+                "FROM operations WHERE time >= ? AND time < ?");
+            activeDayQuery.addBindValue(startMs);
+            activeDayQuery.addBindValue(endMs);
+            activeDayQuery.exec();
+            int activeDays = 0;
+            if (activeDayQuery.next()) activeDays = activeDayQuery.value(0).toInt();
+            
+            // 主要模块
+            QSqlQuery topModQuery(sqlDb);
+            topModQuery.prepare(
+                "SELECT COALESCE(NULLIF(window_class,''), 'unknown'), COUNT(*) as cnt "
+                "FROM operations WHERE time >= ? AND time < ? "
+                "GROUP BY COALESCE(NULLIF(window_class,''), 'unknown') ORDER BY cnt DESC LIMIT 1");
+            topModQuery.addBindValue(startMs);
+            topModQuery.addBindValue(endMs);
+            topModQuery.exec();
+            QString topMod = "-";
+            if (topModQuery.next()) topMod = topModQuery.value(0).toString();
+            if (topMod.length() > 20) topMod = topMod.left(17) + "...";
+            
+            // 对话框打开次数
+            QSqlQuery dlgQuery(sqlDb);
+            dlgQuery.prepare(
+                "SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
+            dlgQuery.addBindValue(startMs);
+            dlgQuery.addBindValue(endMs);
+            dlgQuery.exec();
+            int dlgCount = 0;
+            if (dlgQuery.next()) dlgCount = dlgQuery.value(0).toInt();
+            
+            statCards_[0]->setText(QString(
+                "<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Total Events</span></td></tr>"
+                "<tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>%1</span></td></tr></table>")
+                .arg(countInRange));
+            statCards_[1]->setText(QString(
+                "<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Active Days</span></td></tr>"
+                "<tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>%1</span></td></tr></table>")
+                .arg(activeDays));
+            statCards_[2]->setText(QString(
+                "<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Top Module</span></td></tr>"
+                "<tr><td><span style='font-size:16px;font-weight:600;color:#FFFFFF;'>%1</span></td></tr></table>")
+                .arg(topMod));
+            statCards_[3]->setText(QString(
+                "<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Dialog Opens</span></td></tr>"
+                "<tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>%1</span></td></tr></table>")
+                .arg(dlgCount));
+        }
         
         // 格式化时间桶范围（天粒度）
         QString startBucket = start.toString("yyyy-MM-dd");
@@ -706,7 +927,7 @@ private slots:
         int total = 0;
         
         // ========== 操作频率图表 ==========
-        m_operationChart->detachItems();
+        operationChart_->detachItems();
         QVector<double> opData;
         QStringList opLabels;
         
@@ -758,17 +979,18 @@ private slots:
         }
         
         if (!opData.isEmpty()) {
-            auto* opChart = new QwtPlotBarChart("操作频率");
+            auto* opChart = new QwtPlotBarChart("Operations");
+            styleBarChart(opChart, QColor("#3B82F6"));
             opChart->setSamples(opData);
-            opChart->attach(m_operationChart);
-            m_operationChart->setAxisScale(QwtPlot::xBottom, 0, opData.size() - 1, 1);
-            m_operationChart->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(opData.begin(), opData.end()) * 1.2);
-            m_operationChart->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(opLabels));
-            m_operationChart->replot();
+            opChart->attach(operationChart_);
+            operationChart_->setAxisScale(QwtPlot::xBottom, 0, opData.size() - 1, 1);
+            operationChart_->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(opData.begin(), opData.end()) * 1.2);
+            operationChart_->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(opLabels));
+            operationChart_->replot();
         }
         
         // ========== 模块统计图表 ==========
-        m_moduleChart->detachItems();
+        moduleChart_->detachItems();
         QVector<double> modData;
         QStringList modLabels;
         
@@ -805,72 +1027,51 @@ private slots:
         }
         
         if (!modData.isEmpty()) {
-            auto* modChart = new QwtPlotBarChart("模块统计");
+            auto* modChart = new QwtPlotBarChart("Modules");
+            styleBarChart(modChart, QColor("#8B5CF6"));
             modChart->setSamples(modData);
-            modChart->attach(m_moduleChart);
+            modChart->attach(moduleChart_);
             // 单个数据点时使用对称区间，避免 min==max 导致柱子塌缩成竖线
             if (modData.size() == 1) {
-                m_moduleChart->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
+                moduleChart_->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
             } else {
-                m_moduleChart->setAxisScale(QwtPlot::xBottom, 0, modData.size() - 1, 1);
+                moduleChart_->setAxisScale(QwtPlot::xBottom, 0, modData.size() - 1, 1);
             }
-            m_moduleChart->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(modData.begin(), modData.end()) * 1.2);
-            m_moduleChart->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(modLabels));
-            m_moduleChart->replot();
+            moduleChart_->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(modData.begin(), modData.end()) * 1.2);
+            moduleChart_->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(modLabels));
+            moduleChart_->replot();
         }
         
-        // ========== 输入方式图表 ==========
+        // ========== 输入方式图表（通过分析器接口） ==========
         QVector<double> inputData;
         QStringList inputLabels;
         
-        if (useAgg) {
-            QSqlQuery inputQuery(sqlDb);
-            inputQuery.prepare(
-                "SELECT input_method, SUM(count) as cnt "
-                "FROM agg_input_stats WHERE time_bucket >= ? AND time_bucket <= ? "
-                "GROUP BY input_method ORDER BY cnt DESC");
-            inputQuery.addBindValue(startBucket);
-            inputQuery.addBindValue(endBucket);
-            inputQuery.exec();
-            
-            while (inputQuery.next()) {
-                QString method = inputQuery.value(0).toString();
-                if (method == "mouse") method = "鼠标";
-                else if (method == "touch") method = "触屏";
-                else if (method == "keyboard") method = "键盘";
-                inputLabels << method;
-                inputData << inputQuery.value(1).toDouble();
-            }
-        } else {
-            qint64 startMs = start.toMSecsSinceEpoch();
-            qint64 endMs = end.toMSecsSinceEpoch();
-            
-            QSqlQuery inputQuery(sqlDb);
-            inputQuery.prepare(
-                "SELECT input_method, COUNT(*) as cnt "
-                "FROM operations WHERE time >= ? AND time < ? GROUP BY input_method ORDER BY cnt DESC");
-            inputQuery.addBindValue(startMs);
-            inputQuery.addBindValue(endMs);
-            inputQuery.exec();
-            
-            while (inputQuery.next()) {
-                QString method = inputQuery.value(0).toString();
-                if (method == "mouse") method = "鼠标";
-                else if (method == "touch") method = "触屏";
-                else if (method == "keyboard") method = "键盘";
-                inputLabels << method;
-                inputData << inputQuery.value(1).toDouble();
+        {
+            auto* analyzer = BehaviorAnalytics::analyzer();
+            if (analyzer) {
+                auto inputResult = analyzer->analyzeInput(start, end);
+                // 数据格式是 mouse/touch/keyboard/scroll/knob 五个对象
+                QStringList types = {"mouse", "touch", "keyboard", "scroll", "knob"};
+                QStringList typeLabels = {"Mouse", "Touch", "Keyboard", "Scroll", "Knob"};
+                for (int i = 0; i < types.size(); ++i) {
+                    QVariantMap m = inputResult.data[types[i]].toMap();
+                    double v = m["count"].toDouble();
+                    if (v > 0) {
+                        inputLabels << typeLabels[i];
+                        inputData << v;
+                    }
+                }
             }
         }
         
         if (!inputData.isEmpty()) {
-            m_inputChart->setData(inputLabels, inputData);
+            inputChart_->setData(inputLabels, inputData);
         } else {
-            m_inputChart->setData({}, {});
+            inputChart_->setData({}, {});
         }
         
         // ========== 时间分布图表（折线图） ==========
-        m_timeChart->detachItems();
+        timeChart_->detachItems();
         QVector<double> timeData;
         QStringList timeLabels;
         
@@ -926,45 +1127,47 @@ private slots:
             // 根据数据点数量选择图表类型
             if (n <= 7) {
                 // 一周以内：柱状图
-                auto* timeChart = new QwtPlotBarChart("时间分布");
+                auto* timeChart = new QwtPlotBarChart("Time Distribution");
+                styleBarChart(timeChart, QColor("#10B981"));
                 timeChart->setSamples(timeData);
-                timeChart->attach(m_timeChart);
+                timeChart->attach(timeChart_);
                 if (n == 1) {
-                    m_timeChart->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
+                    timeChart_->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
                 } else {
-                    m_timeChart->setAxisScale(QwtPlot::xBottom, 0, n - 1, 1);
+                    timeChart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, 1);
                 }
             } else {
                 // 超过一周：折线图
-                auto* timeCurve = new QwtPlotCurve("时间分布");
+                auto* timeCurve = new QwtPlotCurve("Time Distribution");
                 QVector<double> x(n);
                 for (int i = 0; i < n; ++i) x[i] = i;
                 timeCurve->setSamples(x.data(), timeData.data(), n);
-                timeCurve->setPen(QPen(QColor("#1E40AF"), 2));
-                timeCurve->attach(m_timeChart);
+                timeCurve->setPen(QPen(QColor("#2563EB"), 2));
+                timeCurve->setBrush(QBrush(QColor(37, 99, 235, 40)));
+                timeCurve->attach(timeChart_);
                 // 智能标签间距：≤30天每5天一个标签，≤90天每10天，否则每30天
                 int step = (n <= 30) ? 5 : (n <= 90) ? 10 : 30;
-                m_timeChart->setAxisScale(QwtPlot::xBottom, 0, n - 1, step);
+                timeChart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, step);
             }
             
             // Y 轴：最大值至少为 1，避免全零时比例塌缩
             double maxVal = *std::max_element(timeData.begin(), timeData.end());
-            m_timeChart->setAxisScale(QwtPlot::yLeft, 0, qMax(maxVal * 1.2, 1.0));
+            timeChart_->setAxisScale(QwtPlot::yLeft, 0, qMax(maxVal * 1.2, 1.0));
             
             // 使用自定义刻度绘制，显示日期标签
-            m_timeChart->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(timeLabels));
+            timeChart_->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(timeLabels));
             
             // 设置 X 轴标题，显示统计区间
-            QString xAxisTitle = QString("日期 (%1 至 %2)")
+            QString xAxisTitle = QString("Date (%1 to %2)")
                 .arg(start.toString("yyyy-MM-dd"))
                 .arg(end.toString("yyyy-MM-dd"));
-            m_timeChart->setAxisTitle(QwtPlot::xBottom, xAxisTitle);
+            timeChart_->setAxisTitle(QwtPlot::xBottom, xAxisTitle);
             
-            m_timeChart->replot();
+            timeChart_->replot();
         } else {
             // 没有数据时显示提示
-            m_timeChart->setAxisTitle(QwtPlot::xBottom, "日期 (无数据)");
-            m_timeChart->replot();
+            timeChart_->setAxisTitle(QwtPlot::xBottom, "Date (no data)");
+            timeChart_->replot();
         }
         
         // ========== 热力图 ==========
@@ -1008,18 +1211,106 @@ private slots:
                 maxHeat = qMax(maxHeat, cnt);
             }
         }
-        m_heatmapWidget->setData(heatData, maxHeat);
+        heatmapWidget_->setData(heatData, maxHeat);
+        
+        // ========== 对话框分析表格 + 散点图 ==========
+        {
+            auto* analyzer = BehaviorAnalytics::analyzer();
+            if (analyzer) {
+                auto dialogResult = analyzer->analyzeDialog(start, end);
+                QVariantList dialogs = dialogResult.data["dialogs"].toList();
+                
+                // 按打开次数降序排
+                std::sort(dialogs.begin(), dialogs.end(), [](const QVariant& a, const QVariant& b) {
+                    return a.toMap()["open_count"].toInt() > b.toMap()["open_count"].toInt();
+                });
+                
+                dialogTable_->setRowCount(dialogs.size());
+                auto formatMs = [](int ms) -> QString {
+                    if (ms <= 0) return "-";
+                    if (ms < 1000) return QString("%1ms").arg(ms);
+                    double sec = ms / 1000.0;
+                    if (sec < 60) return QString("%1s").arg(sec, 0, 'f', 1);
+                    int m = static_cast<int>(sec / 60);
+                    double s = sec - m * 60;
+                    if (m < 60) return QString("%1m%2s").arg(m).arg(s, 0, 'f', 0);
+                    int h = m / 60;
+                    int rm = m % 60;
+                    return QString("%1h%2m").arg(h).arg(rm);
+                };
+                
+                for (int i = 0; i < dialogs.size(); ++i) {
+                    QVariantMap m = dialogs[i].toMap();
+                    dialogTable_->setItem(i, 0, new QTableWidgetItem(m["class"].toString()));
+                    dialogTable_->setItem(i, 1, new QTableWidgetItem(QString::number(m["open_count"].toInt())));
+                    dialogTable_->setItem(i, 2, new QTableWidgetItem(formatMs(m["avg_duration_ms"].toInt())));
+                    dialogTable_->setItem(i, 3, new QTableWidgetItem(formatMs(m["median_duration_ms"].toInt())));
+                    dialogTable_->setItem(i, 4, new QTableWidgetItem(formatMs(m["min_duration_ms"].toInt())));
+                    dialogTable_->setItem(i, 5, new QTableWidgetItem(formatMs(m["max_duration_ms"].toInt())));
+                    dialogTable_->setItem(i, 6, new QTableWidgetItem(m["instant_close_rate"].toString()));
+                }
+                
+                // 散点图：X=打开次数, Y=平均时长(秒)
+                dialogScatter_->detachItems();
+                QVector<double> sx, sy;
+                QStringList sLabels;
+                double maxX = 0, maxY = 0;
+                for (const auto& item : dialogs) {
+                    QVariantMap m = item.toMap();
+                    int cnt = m["open_count"].toInt();
+                    double avgSec = m["avg_duration_ms"].toDouble() / 1000.0;
+                    if (cnt <= 0) continue;
+                    sx << cnt;
+                    sy << avgSec;
+                    QString label = m["class"].toString();
+                    if (label.length() > 15) label = label.left(12) + "...";
+                    sLabels << label;
+                    maxX = qMax(maxX, (double)cnt);
+                    maxY = qMax(maxY, avgSec);
+                }
+                
+                if (!sx.isEmpty()) {
+                    auto* curve = new QwtPlotCurve("Dialog");
+                    curve->setStyle(QwtPlotCurve::Dots);
+                    // 设置点的大小
+                    QwtSymbol* sym = new QwtSymbol(QwtSymbol::Ellipse, 
+                        QBrush(QColor("#3B82F6")), QPen(QColor("#1D4ED8"), 2), QSize(14, 14));
+                    curve->setSymbol(sym);
+                    curve->setSamples(sx.data(), sy.data(), sx.size());
+                    curve->attach(dialogScatter_);
+                    
+                    // 添加标签
+                    for (int i = 0; i < sLabels.size(); ++i) {
+                        QwtText label(sLabels[i].length() > 15 ? sLabels[i].left(12) + "..." : sLabels[i]);
+                        label.setFont(QFont("Microsoft YaHei", 8));
+                        label.setColor(QColor("#E2E8F0"));
+                        auto* marker = new QwtPlotMarker();
+                        marker->setValue(sx[i] + maxX * 0.01, sy[i]);
+                        marker->setLabel(label);
+                        marker->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                        marker->attach(dialogScatter_);
+                    }
+                    
+                    dialogScatter_->setAxisScale(QwtPlot::xBottom, 0, maxX * 1.15, 0);
+                    dialogScatter_->setAxisScale(QwtPlot::yLeft, 0, maxY * 1.15, 0);
+                    dialogScatter_->replot();
+                }
+            }
+        }
     }
     
 private:
-    QDateEdit* m_startDate = nullptr;
-    QDateEdit* m_endDate = nullptr;
-    QTabWidget* m_tabWidget = nullptr;
-    QwtPlot* m_operationChart = nullptr;
-    QwtPlot* m_moduleChart = nullptr;
-    PieChartWidget* m_inputChart = nullptr;
-    QwtPlot* m_timeChart = nullptr;
-    HeatmapWidget* m_heatmapWidget = nullptr;
+    QDateEdit* startDate_ = nullptr;
+    QDateEdit* endDate_ = nullptr;
+    QTabWidget* tabWidget_ = nullptr;
+    QwtPlot* operationChart_ = nullptr;
+    QwtPlot* moduleChart_ = nullptr;
+    PieChartWidget* inputChart_ = nullptr;
+    QwtPlot* timeChart_ = nullptr;
+    HeatmapWidget* heatmapWidget_ = nullptr;
+    QTableWidget* dialogTable_ = nullptr;
+    QwtPlot* dialogScatter_ = nullptr;
+    QList<QLabel*> statCards_;
 };
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -1113,7 +1404,7 @@ void MainWindow::setupCentralWidget() {
     freqPlot->setAxisTitle(QwtPlot::xBottom, "操作类型");
     freqPlot->setAxisTitle(QwtPlot::yLeft, "次数");
     freqPlot->insertLegend(new QwtLegend());
-    m_frequencyChart = freqPlot;
+    frequencyChart_ = freqPlot;
     tabWidget->addTab(freqPlot, "操作频率");
     
     // 时段分布图表（折线图）
@@ -1122,17 +1413,17 @@ void MainWindow::setupCentralWidget() {
     timePlot->setAxisTitle(QwtPlot::xBottom, "小时");
     timePlot->setAxisTitle(QwtPlot::yLeft, "操作数");
     timePlot->insertLegend(new QwtLegend());
-    m_timeChart = timePlot;
+    timeChart_ = timePlot;
     tabWidget->addTab(timePlot, "时段分布");
     
     // 输入方式（饼图）
     auto* inputPie = new PieChartWidget();
-    m_inputChart = inputPie;
+    inputChart_ = inputPie;
     tabWidget->addTab(inputPie, "输入方式");
     
     // 热力图
     auto* heatmapWidget = new HeatmapWidget();
-    m_heatmapChart = heatmapWidget;
+    heatmapChart_ = heatmapWidget;
     tabWidget->addTab(heatmapWidget, "点击热力图");
     
     leftLayout->addWidget(tabWidget, 3);
@@ -1140,28 +1431,28 @@ void MainWindow::setupCentralWidget() {
     // 日志区域
     auto* logGroup = new QGroupBox("采集日志", this);
     auto* logLayout = new QVBoxLayout(logGroup);
-    m_logView = new QPlainTextEdit(this);
-    m_logView->setReadOnly(true);
-    m_logView->setMaximumBlockCount(500);
-    m_logView->setStyleSheet("font-family: Consolas, monospace; font-size: 12px;");
-    logLayout->addWidget(m_logView);
+    logView_ = new QPlainTextEdit(this);
+    logView_->setReadOnly(true);
+    logView_->setMaximumBlockCount(500);
+    logView_->setStyleSheet("font-family: Consolas, monospace; font-size: 12px;");
+    logLayout->addWidget(logView_);
     leftLayout->addWidget(logGroup, 1);
     
     mainLayout->addWidget(leftWidget, 3);
     
     // 右侧：系统按钮面板
     setupRightPanel();
-    mainLayout->addWidget(m_rightPanel, 1);
+    mainLayout->addWidget(rightPanel_, 1);
     
     setCentralWidget(central);
     updateCharts();
 }
 
 void MainWindow::setupRightPanel() {
-    m_rightPanel = new QGroupBox("系统操作", this);
-    auto* lay = new QVBoxLayout(m_rightPanel);
+    rightPanel_ = new QGroupBox("系统操作", this);
+    auto* lay = new QVBoxLayout(rightPanel_);
     
-    auto* statusGroup = new QGroupBox("当前状态", m_rightPanel);
+    auto* statusGroup = new QGroupBox("当前状态", rightPanel_);
     auto* statusLay = new QVBoxLayout(statusGroup);
     auto* statusLabel = new QLabel("就绪", statusGroup);
     statusLabel->setAlignment(Qt::AlignCenter);
@@ -1169,9 +1460,9 @@ void MainWindow::setupRightPanel() {
     statusLay->addWidget(statusLabel);
     lay->addWidget(statusGroup);
     
-    lay->addWidget(new QLabel("操作:", m_rightPanel));
+    lay->addWidget(new QLabel("操作:", rightPanel_));
     
-    auto* btnSystem = new QPushButton("系统操作", m_rightPanel);
+    auto* btnSystem = new QPushButton("系统操作", rightPanel_);
     btnSystem->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(btnSystem, &QPushButton::clicked, this, []{
         SystemButtonsDialog dlg;
@@ -1179,29 +1470,29 @@ void MainWindow::setupRightPanel() {
     });
     lay->addWidget(btnSystem);
     
-    auto* btnReport = new QPushButton("生成报告", m_rightPanel);
+    auto* btnReport = new QPushButton("生成报告", rightPanel_);
     btnReport->setIcon(style()->standardIcon(QStyle::SP_FileIcon));
     connect(btnReport, &QPushButton::clicked, this, &MainWindow::printReport);
     lay->addWidget(btnReport);
     
-    auto* btnExport = new QPushButton("导出数据", m_rightPanel);
+    auto* btnExport = new QPushButton("导出数据", rightPanel_);
     btnExport->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
     connect(btnExport, &QPushButton::clicked, this, &MainWindow::onExport);
     lay->addWidget(btnExport);
     
-    auto* btnSettings = new QPushButton("系统设置", m_rightPanel);
+    auto* btnSettings = new QPushButton("系统设置", rightPanel_);
     btnSettings->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
     connect(btnSettings, &QPushButton::clicked, this, &MainWindow::onSettings);
     lay->addWidget(btnSettings);
     
-    auto* btnAggregation = new QPushButton("立即聚合", m_rightPanel);
+    auto* btnAggregation = new QPushButton("立即聚合", rightPanel_);
     btnAggregation->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
     connect(btnAggregation, &QPushButton::clicked, this, &MainWindow::onAggregation);
     lay->addWidget(btnAggregation);
     
     lay->addStretch();
     
-    auto* statsGroup = new QGroupBox("统计信息", m_rightPanel);
+    auto* statsGroup = new QGroupBox("统计信息", rightPanel_);
     auto* statsLay = new QVBoxLayout(statsGroup);
     statsLay->addWidget(new QLabel("总操作数: 0", statsGroup));
     statsLay->addWidget(new QLabel("会话时长: 0:00", statsGroup));
@@ -1212,13 +1503,13 @@ void MainWindow::setupRightPanel() {
 void MainWindow::setupStatusBar() {
     auto* status = statusBar();
     
-    m_statusLabel = new QLabel("就绪", this);
-    status->addWidget(m_statusLabel, 1);
+    statusLabel_ = new QLabel("就绪", this);
+    status->addWidget(statusLabel_, 1);
     
     status->addWidget(new QLabel(" | ", this));
     
-    m_sessionLabel = new QLabel("会话: --", this);
-    status->addWidget(m_sessionLabel);
+    sessionLabel_ = new QLabel("会话: --", this);
+    status->addWidget(sessionLabel_);
     
     status->addWidget(new QLabel(" | ", this));
     
@@ -1235,7 +1526,7 @@ void MainWindow::setupStatusBar() {
 
 void MainWindow::appendLog(const QString& msg) {
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    m_logView->appendPlainText(QString("[%1] %2").arg(timestamp).arg(msg));
+    logView_->appendPlainText(QString("[%1] %2").arg(timestamp).arg(msg));
 }
 
 void MainWindow::updateCharts() {
@@ -1249,7 +1540,7 @@ void MainWindow::updateCharts() {
     QDateTime start = end.addDays(-7);
     
     // 频率图表
-    auto* freqPlot = qobject_cast<QwtPlot*>(m_frequencyChart);
+    auto* freqPlot = qobject_cast<QwtPlot*>(frequencyChart_);
     freqPlot->detachItems();
     
     auto freqResult = analyzer->analyzeFrequency(start, end);
@@ -1280,7 +1571,7 @@ void MainWindow::updateCharts() {
     freqPlot->replot();
     
     // 时段分布图表
-    auto* timePlot = qobject_cast<QwtPlot*>(m_timeChart);
+    auto* timePlot = qobject_cast<QwtPlot*>(timeChart_);
     timePlot->detachItems();
     
     auto timeResult = analyzer->analyzeTime(start, end);
@@ -1306,14 +1597,14 @@ void MainWindow::updateCharts() {
     timePlot->replot();
     
     // 输入方式图表（饼图）
-    auto* inputPie = qobject_cast<PieChartWidget*>(m_inputChart);
+    auto* inputPie = qobject_cast<PieChartWidget*>(inputChart_);
     
     auto inputResult = analyzer->analyzeInput(start, end);
     y.clear();
     
-    // 数据格式是 mouse/touch/keyboard 三个对象
-    QStringList types = {"mouse", "touch", "keyboard"};
-    QStringList typeLabels = {"鼠标", "触摸", "键盘"};
+    // 数据格式是 mouse/touch/keyboard/scroll/knob 五个对象
+    QStringList types = {"mouse", "touch", "keyboard", "scroll", "knob"};
+    QStringList typeLabels = {"鼠标", "触摸", "键盘", "滚动", "旋钮"};
     for (const QString& type : types) {
         QVariantMap m = inputResult.data[type].toMap();
         double v = m["count"].toDouble();
@@ -1323,7 +1614,7 @@ void MainWindow::updateCharts() {
     inputPie->setData(typeLabels, y);
     
     // 热力图
-    auto* heatmapWidget = qobject_cast<HeatmapWidget*>(m_heatmapChart);
+    auto* heatmapWidget = qobject_cast<HeatmapWidget*>(heatmapChart_);
     auto heatmapResult = analyzer->analyzeHeatmap(start, end);
     
     QMap<int, int> regionCounts;
@@ -1343,17 +1634,17 @@ void MainWindow::updateCharts() {
 }
 
 void MainWindow::onMeasureStart() {
-    m_measuring = true;
-    m_statusLabel->setText("测量中...");
-    m_statusLabel->setStyleSheet("color: blue;");
+    measuring_ = true;
+    statusLabel_->setText("测量中...");
+    statusLabel_->setStyleSheet("color: blue;");
     statusBar()->showMessage("开始测量", 2000);
     appendLog("开始测量");
 }
 
 void MainWindow::onMeasureStop() {
-    m_measuring = false;
-    m_statusLabel->setText("已停止");
-    m_statusLabel->setStyleSheet("color: orange;");
+    measuring_ = false;
+    statusLabel_->setText("已停止");
+    statusLabel_->setStyleSheet("color: orange;");
     statusBar()->showMessage("测量已停止", 2000);
     appendLog("停止测量");
 }
@@ -1377,21 +1668,21 @@ void MainWindow::onExport() {
 }
 
 void MainWindow::onRefreshChart() {
-    m_statusLabel->setText("刷新中...");
+    statusLabel_->setText("刷新中...");
     updateCharts();
-    m_statusLabel->setText("就绪");
+    statusLabel_->setText("就绪");
     statusBar()->showMessage("图表已刷新", 2000);
 }
 
 void MainWindow::onAggregation() {
     appendLog("开始全量聚合...");
-    m_statusLabel->setText("聚合中...");
+    statusLabel_->setText("聚合中...");
     
     // 获取数据库连接
     auto& db = ui_shared::behavior::Database::instance();
     if (!db.isOpen()) {
         appendLog("错误: 数据库未打开");
-        m_statusLabel->setText("聚合失败");
+        statusLabel_->setText("聚合失败");
         return;
     }
     
@@ -1449,7 +1740,7 @@ void MainWindow::onAggregation() {
     
     if (opsCount == 0) {
         appendLog("错误: operations 表为空，请先采集数据");
-        m_statusLabel->setText("聚合失败");
+        statusLabel_->setText("聚合失败");
         return;
     }
     
@@ -1555,12 +1846,16 @@ void MainWindow::onAggregation() {
         appendLog("agg_heatmap_stats 插入成功");
     }
     
-    // 对话框聚合
+    // 对话框聚合 — 标识优先级与 dialog_analyzer 一致
     QString dialogSql = QString(
         "INSERT OR REPLACE INTO agg_dialog_stats (time_bucket,granularity,dialog_class,open_count,total_duration,avg_duration) "
         "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), 'day', "
-        "window_class, COUNT(*), SUM(COALESCE(duration,0)), AVG(COALESCE(duration,0)) "
-        "FROM operations WHERE time >= %2 AND time < %3 AND event_type = 'dialog_close' "
+        "COALESCE(NULLIF(window_title,''), NULLIF(control_name,''), window_class), "
+        "SUM(CASE WHEN event_type='dialog_open' THEN 1 ELSE 0 END), "
+        "SUM(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) ELSE 0 END), "
+        "AVG(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) END) "
+        "FROM operations WHERE time >= %2 AND time < %3 "
+        "AND event_type IN ('dialog_open','dialog_close') "
         "GROUP BY 1, 3")
         .arg("%Y-%m-%d")
         .arg(startMs)
@@ -1634,7 +1929,7 @@ void MainWindow::onAggregation() {
     }
     
     appendLog("聚合完成");
-    m_statusLabel->setText("就绪");
+    statusLabel_->setText("就绪");
     statusBar()->showMessage("聚合完成", 3000);
     
     // 刷新图表

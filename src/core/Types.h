@@ -20,9 +20,12 @@ enum class EventType {
 
 // 输入方式
 enum class InputMethod {
-    Mouse,
-    Touch,
-    Keyboard
+    Mouse,      // 鼠标点击/拖拽
+    Touch,      // 触摸点击/滑动
+    Keyboard,   // 键盘按键
+    Scroll,     // 滚动（鼠标滑轮、触控板滚动）
+    Knob,       // 旋钮
+    Derived     // 衍生事件（dialog_open/close、选件开关等）
 };
 
 // 事件类型 <-> 字符串（数据库存储用）
@@ -53,14 +56,21 @@ inline const char* inputMethodToString(InputMethod m) {
         case InputMethod::Mouse:    return "mouse";
         case InputMethod::Touch:    return "touch";
         case InputMethod::Keyboard: return "keyboard";
+        case InputMethod::Scroll:   return "scroll";
+        case InputMethod::Knob:     return "knob";
+        case InputMethod::Derived:  return "derived";
     }
-    return "mouse";
+    return "derived";
 }
 
 inline InputMethod stringToInputMethod(const QString& s) {
+    if (s == "mouse")    return InputMethod::Mouse;
     if (s == "touch")    return InputMethod::Touch;
     if (s == "keyboard") return InputMethod::Keyboard;
-    return InputMethod::Mouse;
+    if (s == "scroll")   return InputMethod::Scroll;
+    if (s == "knob")     return InputMethod::Knob;
+    if (s == "derived")  return InputMethod::Derived;
+    return InputMethod::Derived;
 }
 
 // 操作记录
@@ -86,6 +96,9 @@ struct Operation {
     QString windowTitle;
     QString windowPath;
     bool isMainWindow = false;
+
+    // 业务上下文（选件/测量项等，由应用层设置）
+    QString module;
 
     // 位置信息（全局屏幕坐标）
     int screenX = 0;
