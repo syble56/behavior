@@ -25,6 +25,11 @@ set(BEHAVIOR_TESTS
     TestBatchWriter
     TestMigrator
     TestQueryFilter
+    TestDistanceCalc
+    TestAnalyzerOutput
+    TestCoordBoundary
+    TestTimezone
+    TestAggPrecision
 )
 
 foreach(TEST_NAME ${BEHAVIOR_TESTS})

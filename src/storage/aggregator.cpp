@@ -83,6 +83,7 @@ void Aggregator::aggregateInputs(const QDateTime& start, const QDateTime& end, G
         "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), '%2', "
         "input_method, COUNT(*) "
         "FROM operations WHERE time >= %3 AND time < %4 "
+        "AND input_method != 'derived' "
         "GROUP BY 1, 3")
         .arg(fmt).arg(gran).arg(startMs).arg(endMs);
     
