@@ -1,5 +1,5 @@
 // TestAggPrecision.cpp �?聚合值精确比对测�?// P2: 不只比对 SUM/COUNT，还验证�?action 分组的分布、百分比、中位数
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QTemporaryDir>
 #include <QDateTime>
 #include <QSqlQuery>
@@ -68,44 +68,30 @@ QHash<QString, int> getRawActionCounts(qint64 start, qint64 end) {
 }
 } // namespace
 
-class TestAggPrecision : public QObject {
-    Q_OBJECT
-private slots:
-    void init();
-    void cleanup();
+class TestAggPrecision : public ::testing::Test {
+protected:
+    void SetUp() override;
+    void TearDown() override;
 
     // --- Action distribution precision ---
-    void testActionDistributionMatchesRaw();
-    void testActionDistributionMultipleBuckets();
-    void testActionCountSumMatchesTotal();
 
     // --- Module distribution precision ---
-    void testModuleDistributionMatchesRaw();
-    void testModulePercentageSumsTo100();
 
     // --- Input method distribution precision ---
-    void testInputMethodDistribution();
-    void testInputMethodExcludesDerived();
 
     // --- Heatmap precision ---
-    void testHeatmapOnlyClickEvents();
-    void testHeatmapOnlyMainWindow();
-    void testHeatmapRegionDistribution();
 
     // --- Dialog aggregation precision ---
-    void testDialogDurationPerDialog();
-    void testDialogMedianCorrectness();
 
     // --- Idempotent with precision ---
-    void testRerunProducesIdenticalDistribution();
 
-private:
+protected:
     QTemporaryDir* dir_ = nullptr;
     QString path_;
     QDateTime baseTime_;
 };
 
-void TestAggPrecision::init() {
+void TestAggPrecision::SetUp() {
     dir_ = new QTemporaryDir;
     path_ = dir_->path() + "/agg_prec_test.db";
     Config::instance().setDatabasePath(path_);
@@ -113,7 +99,7 @@ void TestAggPrecision::init() {
     baseTime_ = QDateTime(QDate(2026, 7, 13), QTime(10, 0, 0));
 }
 
-void TestAggPrecision::cleanup() {
+void TestAggPrecision::TearDown() {
     Database::instance().close();
     delete dir_;
     dir_ = nullptr;
@@ -121,13 +107,15 @@ void TestAggPrecision::cleanup() {
 
 // ===== Action distribution =====
 
-void TestAggPrecision::testActionDistributionMatchesRaw() {
+TEST_F(TestAggPrecision, testActionDistributionMatchesRaw) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // "save" x3, "open" x2, "delete" x1 within same hour
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         Database::instance().insertOperation(makeOp(base + i*100, "save"));
-    for (int i = 0; i < 2; ++i)
+    }
+    for (int i = 0; i < 2; ++i) {
         Database::instance().insertOperation(makeOp(base + 300 + i*100, "open"));
+    }
     Database::instance().insertOperation(makeOp(base + 500, "delete"));
 
     QDateTime end = baseTime_.addSecs(3600);
@@ -138,14 +126,14 @@ void TestAggPrecision::testActionDistributionMatchesRaw() {
     auto aggCounts = getAggActionCounts(bucket);
     auto rawCounts = getRawActionCounts(base, end.toMSecsSinceEpoch());
 
-    QCOMPARE(aggCounts.size(), 3);
-    QCOMPARE(aggCounts["save"], 3);
-    QCOMPARE(aggCounts["open"], 2);
-    QCOMPARE(aggCounts["delete"], 1);
-    QCOMPARE(aggCounts, rawCounts);
+    EXPECT_EQ(aggCounts.size(), 3);
+    EXPECT_EQ(aggCounts["save"], 3);
+    EXPECT_EQ(aggCounts["open"], 2);
+    EXPECT_EQ(aggCounts["delete"], 1);
+    EXPECT_EQ(aggCounts, rawCounts);
 }
 
-void TestAggPrecision::testActionDistributionMultipleBuckets() {
+TEST_F(TestAggPrecision, testActionDistributionMultipleBuckets) {
     // Insert across two hours
     QDateTime h1 = baseTime_;
     QDateTime h2 = baseTime_.addSecs(3600);
@@ -164,13 +152,13 @@ void TestAggPrecision::testActionDistributionMultipleBuckets() {
     auto counts1 = getAggActionCounts(b1);
     auto counts2 = getAggActionCounts(b2);
 
-    QCOMPARE(counts1["save"], 2);
-    QVERIFY(!counts1.contains("open"));
-    QCOMPARE(counts2["open"], 1);
-    QVERIFY(!counts2.contains("save"));
+    EXPECT_EQ(counts1["save"], 2);
+    EXPECT_TRUE(!counts1.contains("open"));
+    EXPECT_EQ(counts2["open"], 1);
+    EXPECT_TRUE(!counts2.contains("save"));
 }
 
-void TestAggPrecision::testActionCountSumMatchesTotal() {
+TEST_F(TestAggPrecision, testActionCountSumMatchesTotal) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       "a"));
     Database::instance().insertOperation(makeOp(base + 100, "b"));
@@ -185,13 +173,13 @@ void TestAggPrecision::testActionCountSumMatchesTotal() {
     QSqlQuery q(Database::instance().connection());
     q.prepare("SELECT SUM(count) FROM agg_operation_stats WHERE time_bucket = ?");
     q.addBindValue(bucket); q.exec();
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 4);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 4);
 }
 
 // ===== Module distribution =====
 
-void TestAggPrecision::testModuleDistributionMatchesRaw() {
+TEST_F(TestAggPrecision, testModuleDistributionMatchesRaw) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       "click", "QMainWindow"));
     Database::instance().insertOperation(makeOp(base + 100, "click", "QMainWindow"));
@@ -206,15 +194,15 @@ void TestAggPrecision::testModuleDistributionMatchesRaw() {
     q.prepare("SELECT module_class, count FROM agg_module_stats WHERE time_bucket = ? ORDER BY count DESC");
     q.addBindValue(bucket); q.exec();
 
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("QMainWindow"));
-    QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("SettingsDialog"));
-    QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("QMainWindow"));
+    EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("SettingsDialog"));
+    EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
-void TestAggPrecision::testModulePercentageSumsTo100() {
+TEST_F(TestAggPrecision, testModulePercentageSumsTo100) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       "click", "QMainWindow"));
     Database::instance().insertOperation(makeOp(base + 100, "click", "OptionsDialog"));
@@ -231,12 +219,12 @@ void TestAggPrecision::testModulePercentageSumsTo100() {
 
     int total = 0;
     while (q.next()) total += q.value(0).toInt();
-    QCOMPARE(total, 3);
+    EXPECT_EQ(total, 3);
 }
 
 // ===== Input method =====
 
-void TestAggPrecision::testInputMethodDistribution() {
+TEST_F(TestAggPrecision, testInputMethodDistribution) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       "click", "MainWindow", true, InputMethod::Mouse));
     Database::instance().insertOperation(makeOp(base + 100, "click", "MainWindow", true, InputMethod::Mouse));
@@ -252,16 +240,16 @@ void TestAggPrecision::testInputMethodDistribution() {
     q.prepare("SELECT input_method, count FROM agg_input_stats WHERE time_bucket = ? ORDER BY count DESC");
     q.addBindValue(bucket); q.exec();
 
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("mouse"));
-    QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next());
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("mouse"));
+    EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next());
     // keyboard and touch both have 1 �?order may vary
     int secondCount = q.value(1).toInt();
-    QCOMPARE(secondCount, 1);
+    EXPECT_EQ(secondCount, 1);
 }
 
-void TestAggPrecision::testInputMethodExcludesDerived() {
+TEST_F(TestAggPrecision, testInputMethodExcludesDerived) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       "click", "MainWindow", true, InputMethod::Mouse));
     Database::instance().insertOperation(makeOp(base + 100, "click", "MainWindow", true, InputMethod::Derived));
@@ -276,12 +264,12 @@ void TestAggPrecision::testInputMethodExcludesDerived() {
     q.addBindValue(bucket); q.exec();
 
     // Derived should NOT appear in input stats (consistent with InputAnalyzer)
-    QVERIFY(!q.next());
+    EXPECT_TRUE(!q.next());
 }
 
 // ===== Heatmap =====
 
-void TestAggPrecision::testHeatmapOnlyClickEvents() {
+TEST_F(TestAggPrecision, testHeatmapOnlyClickEvents) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // Click event
     Database::instance().insertOperation(makeOp(base, "click", "MainWindow", true, InputMethod::Mouse, 42));
@@ -298,12 +286,12 @@ void TestAggPrecision::testHeatmapOnlyClickEvents() {
     QSqlQuery q(Database::instance().connection());
     q.prepare("SELECT SUM(count) FROM agg_heatmap_stats WHERE time_bucket = ?");
     q.addBindValue(bucket); q.exec();
-    QVERIFY(q.next());
+    EXPECT_TRUE(q.next());
     // Only the click event should be counted
-    QCOMPARE(q.value(0).toInt(), 1);
+    EXPECT_EQ(q.value(0).toInt(), 1);
 }
 
-void TestAggPrecision::testHeatmapOnlyMainWindow() {
+TEST_F(TestAggPrecision, testHeatmapOnlyMainWindow) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       "click", "MainWindow", true,  InputMethod::Mouse, 10));
     Database::instance().insertOperation(makeOp(base + 100, "click", "MainWindow", false, InputMethod::Mouse, 20));  // not main window
@@ -316,17 +304,19 @@ void TestAggPrecision::testHeatmapOnlyMainWindow() {
     QSqlQuery q(Database::instance().connection());
     q.prepare("SELECT SUM(count) FROM agg_heatmap_stats WHERE time_bucket = ?");
     q.addBindValue(bucket); q.exec();
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 1);  // only main window
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1);  // only main window
 }
 
-void TestAggPrecision::testHeatmapRegionDistribution() {
+TEST_F(TestAggPrecision, testHeatmapRegionDistribution) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // 3 clicks in region 10, 2 in region 55, 1 in region 99
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         Database::instance().insertOperation(makeOp(base + i*100, "click", "MainWindow", true, InputMethod::Mouse, 10));
-    for (int i = 0; i < 2; ++i)
+    }
+    for (int i = 0; i < 2; ++i) {
         Database::instance().insertOperation(makeOp(base + 300 + i*100, "click", "MainWindow", true, InputMethod::Mouse, 55));
+    }
     Database::instance().insertOperation(makeOp(base + 500, "click", "MainWindow", true, InputMethod::Mouse, 99));
 
     QDateTime end = baseTime_.addSecs(3600);
@@ -338,20 +328,20 @@ void TestAggPrecision::testHeatmapRegionDistribution() {
     q.prepare("SELECT heat_region, count FROM agg_heatmap_stats WHERE time_bucket = ? ORDER BY heat_region");
     q.addBindValue(bucket); q.exec();
 
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 10);
-    QCOMPARE(q.value(1).toInt(), 3);
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 55);
-    QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 99);
-    QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 10);
+    EXPECT_EQ(q.value(1).toInt(), 3);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 55);
+    EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 99);
+    EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
 // ===== Dialog aggregation =====
 
-void TestAggPrecision::testDialogDurationPerDialog() {
+TEST_F(TestAggPrecision, testDialogDurationPerDialog) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // Two different dialogs with different durations
     {
@@ -384,17 +374,17 @@ void TestAggPrecision::testDialogDurationPerDialog() {
     // Verify dialog stats in aggregation table
     QSqlQuery q(Database::instance().connection());
     q.exec("SELECT dialog_class, open_count, total_duration FROM agg_dialog_stats ORDER BY dialog_class");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("DialogA"));
-    QCOMPARE(q.value(1).toInt(), 1);
-    QCOMPARE(q.value(2).toInt(), 3000);
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("DialogB"));
-    QCOMPARE(q.value(1).toInt(), 1);
-    QCOMPARE(q.value(2).toInt(), 2000);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("DialogA"));
+    EXPECT_EQ(q.value(1).toInt(), 1);
+    EXPECT_EQ(q.value(2).toInt(), 3000);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("DialogB"));
+    EXPECT_EQ(q.value(1).toInt(), 1);
+    EXPECT_EQ(q.value(2).toInt(), 2000);
 }
 
-void TestAggPrecision::testDialogMedianCorrectness() {
+TEST_F(TestAggPrecision, testDialogMedianCorrectness) {
     // Durations: 1000, 2000, 3000, 4000, 5000 => median = 3000
     qint64 base = baseTime_.toMSecsSinceEpoch();
     int durations[] = {1000, 2000, 3000, 4000, 5000};
@@ -417,19 +407,21 @@ void TestAggPrecision::testDialogMedianCorrectness() {
     // Check if median is stored correctly (if the table has a median column)
     QSqlQuery q(Database::instance().connection());
     q.exec("SELECT total_duration, open_count FROM agg_dialog_stats WHERE dialog_class = 'MedianTest'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 15000);  // sum of all durations
-    QCOMPARE(q.value(1).toInt(), 5);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 15000);  // sum of all durations
+    EXPECT_EQ(q.value(1).toInt(), 5);
 }
 
 // ===== Idempotent with precision =====
 
-void TestAggPrecision::testRerunProducesIdenticalDistribution() {
+TEST_F(TestAggPrecision, testRerunProducesIdenticalDistribution) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i) {
         Database::instance().insertOperation(makeOp(base + i*100, "save"));
-    for (int i = 0; i < 3; ++i)
+    }
+    for (int i = 0; i < 3; ++i) {
         Database::instance().insertOperation(makeOp(base + 500 + i*100, "open"));
+    }
 
     QDateTime end = baseTime_.addSecs(3600);
     Aggregator agg;
@@ -444,10 +436,8 @@ void TestAggPrecision::testRerunProducesIdenticalDistribution() {
     auto secondRun = getAggActionCounts(bucket);
 
     // Must be identical
-    QCOMPARE(secondRun, firstRun);
-    QCOMPARE(secondRun["save"], 5);
-    QCOMPARE(secondRun["open"], 3);
+    EXPECT_EQ(secondRun, firstRun);
+    EXPECT_EQ(secondRun["save"], 5);
+    EXPECT_EQ(secondRun["open"], 3);
 }
 
-QTEST_MAIN(TestAggPrecision)
-#include "TestAggPrecision.moc"

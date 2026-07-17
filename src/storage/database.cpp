@@ -22,8 +22,9 @@ QString connectionNameForThread() {
 
 QString defaultPath() {
     QString p = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    if (p.isEmpty())
+    if (p.isEmpty()) {
         p = QCoreApplication::applicationDirPath();
+    }
     QDir d(p);
     if (!d.exists()) d.mkpath(".");
     return p + "/behavior.db";
@@ -45,8 +46,9 @@ bool Database::open(const QString& path) {
     
     // 直接在主线程创建连接（不调用connection()避免死锁）
     QString name = connectionNameForThread();
-    if (QSqlDatabase::contains(name))
+    if (QSqlDatabase::contains(name)) {
         QSqlDatabase::removeDatabase(name);
+    }
     
     qDebug("[Database] Creating connection '%s'", qPrintable(name));
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
@@ -108,8 +110,9 @@ QSqlDatabase Database::connection() {
         if (db.isOpen()) return db;
     }
     QMutexLocker locker(&initMutex_);
-    if (QSqlDatabase::contains(name))
+    if (QSqlDatabase::contains(name)) {
         QSqlDatabase::removeDatabase(name);
+    }
     
     qDebug("[Database] Creating connection '%s'", qPrintable(name));
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);

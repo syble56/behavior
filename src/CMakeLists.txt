@@ -14,6 +14,7 @@ set(BEHAVIOR_SOURCES
     storage/database.cpp
     storage/operation_queue.cpp
     storage/batch_writer.cpp
+    storage/cleaner.cpp
     storage/migrator.cpp
     storage/aggregator.cpp
     storage/aggregation_scheduler.cpp
@@ -43,6 +44,7 @@ set(BEHAVIOR_HEADERS
     storage/database.h
     storage/operation_queue.h
     storage/batch_writer.h
+    storage/cleaner.h
     storage/migrator.h
     storage/aggregator.h
     storage/aggregation_scheduler.h
@@ -65,6 +67,7 @@ set(BEHAVIOR_MOC_HEADERS
     collector/event_filter.h
     collector/event_processor.h
     storage/batch_writer.h
+    storage/cleaner.h
     storage/aggregator.h
     storage/aggregation_scheduler.h
     analyzer/behavior_analyzer.h

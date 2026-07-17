@@ -44,8 +44,9 @@ AnalysisResult TimeAnalyzer::analyze(const QList<Operation>& ops) {
         }
     }
     if (granularity_ == Granularity::Hour) r.data["by_hour"] = by;
-    else r.data["by_bucket"] = by;
-    r.data["peak_buckets"] = QVariant::fromValue(peaks);
+    else r.data["by_bucket"] = by; {
+        r.data["peak_buckets"] = QVariant::fromValue(peaks);
+    }
     r.success = true;
     return r;
 }

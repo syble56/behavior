@@ -27,14 +27,7 @@ void HeatmapTab::updateData(const QDateTime& start, const QDateTime& end) {
     QString endBucket = end.toString("yyyy-MM-dd");
     int rangeDays = start.date().daysTo(end.date()) + 1;
 
-    bool useAgg = false;
-    if (rangeDays > 90) {
-        QSqlQuery q0(sqlDb);
-        q0.exec("SELECT MIN(time_bucket), MAX(time_bucket) FROM agg_operation_stats WHERE length(time_bucket) = 10");
-        QString aggMinDay, aggMaxDay;
-        if (q0.next()) { aggMinDay = q0.value(0).toString(); aggMaxDay = q0.value(1).toString(); }
-        if (!aggMinDay.isEmpty() && startBucket >= aggMinDay && endBucket <= aggMaxDay) useAgg = true;
-    }
+    bool useAgg = (rangeDays > 7);
 
     QSqlQuery q(sqlDb);
     QMap<int, int> heatData;

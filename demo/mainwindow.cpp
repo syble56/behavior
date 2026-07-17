@@ -168,7 +168,12 @@ void MainWindow::setupCentralWidget() {
     mainLayout->addWidget(rightPanel_, 1);
 
     setCentralWidget(central);
-    updateCharts();
+    // 延迟更新图表，避免构造函数中阻塞窗口显示
+    QTimer::singleShot(100, this, [this] {
+        statusLabel_->setText("Loading charts...");
+        updateCharts();
+        statusLabel_->setText("Ready");
+    });
 }
 
 // ============ Right Panel ============
@@ -433,6 +438,7 @@ void MainWindow::onAggregation() {
     q.exec(QString(
         "INSERT OR REPLACE INTO agg_dialog_stats (time_bucket,granularity,dialog_class,open_count,total_duration,avg_duration) "
         "SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')), 'day', "
+        "CASE WHEN module IS NOT NULL AND module != '' THEN module || '/' ELSE '' END || "
         "COALESCE(NULLIF(window_title,''), NULLIF(control_name,''), window_class), "
         "SUM(CASE WHEN event_type='dialog_open' THEN 1 ELSE 0 END), "
         "SUM(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) ELSE 0 END), "
@@ -463,17 +469,21 @@ void MainWindow::printReport() {
 
     QString report;
     report += "==== Frequency ====\n";
-    for (auto it = a->analyzeFrequency(start, end).data.begin(); it != a->analyzeFrequency(start, end).data.end(); ++it)
+    for (auto it = a->analyzeFrequency(start, end).data.begin(); it != a->analyzeFrequency(start, end).data.end(); ++it) {
         report += QString("%1: %2\n").arg(it.key()).arg(it.value().toString());
+    }
     report += "\n==== Module ====\n";
-    for (auto it = a->analyzeModule(start, end).data.begin(); it != a->analyzeModule(start, end).data.end(); ++it)
+    for (auto it = a->analyzeModule(start, end).data.begin(); it != a->analyzeModule(start, end).data.end(); ++it) {
         report += QString("%1: %2\n").arg(it.key()).arg(it.value().toString());
+    }
     report += "\n==== Input ====\n";
-    for (auto it = a->analyzeInput(start, end).data.begin(); it != a->analyzeInput(start, end).data.end(); ++it)
+    for (auto it = a->analyzeInput(start, end).data.begin(); it != a->analyzeInput(start, end).data.end(); ++it) {
         report += QString("%1: %2\n").arg(it.key()).arg(it.value().toString());
+    }
     report += "\n==== Time ====\n";
-    for (auto it = a->analyzeTime(start, end).data.begin(); it != a->analyzeTime(start, end).data.end(); ++it)
+    for (auto it = a->analyzeTime(start, end).data.begin(); it != a->analyzeTime(start, end).data.end(); ++it) {
         report += QString("%1: %2\n").arg(it.key()).arg(it.value().toString());
+    }
 
     QMessageBox::information(this, "Report", report);
     appendLog("Report generated");

@@ -60,15 +60,34 @@ void DistanceTab::updateData(const QDateTime& start, const QDateTime& end) {
     qint64 endMs = end.toMSecsSinceEpoch();
 
     QSqlQuery q(sqlDb);
-    q.prepare(
-        "SELECT screen_x, screen_y, "
-        "strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt "
-        "FROM operations WHERE time >= ? AND time < ? "
-        "AND event_type IN ('mouse_click','touch_tap','area_click') "
-        "AND screen_x IS NOT NULL AND screen_y IS NOT NULL "
-        "AND (screen_x != 0 OR screen_y != 0) "
-        "ORDER BY time");
-    q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+    
+    // For large ranges, limit to sampled data to avoid loading 500k+ rows
+    int rangeDaysDist = start.date().daysTo(end.date()) + 1;
+    if (rangeDaysDist > 30) {
+        // Use sampling: take every Nth record to keep memory manageable
+        q.prepare(
+            "SELECT screen_x, screen_y, "
+            "strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt "
+            "FROM operations WHERE time >= ? AND time < ? "
+            "AND event_type IN ('mouse_click','touch_tap','area_click') "
+            "AND screen_x IS NOT NULL AND screen_y IS NOT NULL "
+            "AND (screen_x != 0 OR screen_y != 0) "
+            "AND (id % ? = 0) "  // sampling
+            "ORDER BY time");
+        q.addBindValue(startMs); q.addBindValue(endMs);
+        q.addBindValue(qMax(1, rangeDaysDist / 30));  // ~30 points per day max
+        q.exec();
+    } else {
+        q.prepare(
+            "SELECT screen_x, screen_y, "
+            "strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt "
+            "FROM operations WHERE time >= ? AND time < ? "
+            "AND event_type IN ('mouse_click','touch_tap','area_click') "
+            "AND screen_x IS NOT NULL AND screen_y IS NOT NULL "
+            "AND (screen_x != 0 OR screen_y != 0) "
+            "ORDER BY time");
+        q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+    }
 
     // Group points by day
     QMap<QString, QList<QPointF>> dayPoints;

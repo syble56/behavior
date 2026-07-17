@@ -62,8 +62,9 @@ void BatchWriter::onTimeout() {
 void BatchWriter::writeBatch(int maxCount) {
     if (!queue_) return;
     // 等待少量数据可用
-    if (maxCount < std::numeric_limits<int>::max() && queue_->size() == 0)
+    if (maxCount < std::numeric_limits<int>::max() && queue_->size() == 0) {
         return;
+    }
     QList<Operation> ops = queue_->dequeue(maxCount);
     if (ops.isEmpty()) return;
     if (Database::instance().batchInsert(ops)) {

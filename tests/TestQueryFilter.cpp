@@ -1,5 +1,5 @@
 // TestQueryFilter.cpp — 查询过滤器组合 + 边界条件
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QTemporaryDir>
 #include <QDateTime>
 
@@ -24,26 +24,19 @@ Operation makeOp(qint64 ts, const QString& sess = "s1",
 }
 } // namespace
 
-class TestQueryFilter : public QObject {
-    Q_OBJECT
-private slots:
-    void init();
-    void cleanup();
+class TestQueryFilter : public ::testing::Test {
+protected:
+    void SetUp() override;
+    void TearDown() override;
 
-    void testCombinedFilters();
-    void testExactBoundary();
-    void testNoResults();
-    void testLimitZero();
-    void testLargeTimestamp();
-    void testSpecialCharsInSessionId();
 
-private:
+protected:
     QTemporaryDir* dir_ = nullptr;
     QString path_;
     qint64 base_ = 0;
 };
 
-void TestQueryFilter::init() {
+void TestQueryFilter::SetUp() {
     dir_ = new QTemporaryDir;
     path_ = dir_->path() + "/qf_test.db";
     Config::instance().setDatabasePath(path_);
@@ -51,13 +44,13 @@ void TestQueryFilter::init() {
     base_ = QDateTime::currentMSecsSinceEpoch();
 }
 
-void TestQueryFilter::cleanup() {
+void TestQueryFilter::TearDown() {
     Database::instance().close();
     delete dir_;
     dir_ = nullptr;
 }
 
-void TestQueryFilter::testCombinedFilters() {
+TEST_F(TestQueryFilter, testCombinedFilters) {
     Database::instance().batchInsert({
         makeOp(base_, "s1", EventType::MouseClick, "Main", true),
         makeOp(base_ + 1, "s1", EventType::Shortcut, "Main", true),
@@ -75,13 +68,13 @@ void TestQueryFilter::testCombinedFilters() {
 
     auto ops = Database::instance().queryOperations(f);
     // 只有第一条满足所有条件
-    QCOMPARE(ops.size(), 1);
-    QCOMPARE(ops[0].sessionId, QString("s1"));
-    QCOMPARE(ops[0].eventType, EventType::MouseClick);
-    QVERIFY(ops[0].isMainWindow);
+    EXPECT_EQ(ops.size(), 1);
+    EXPECT_EQ(ops[0].sessionId, QString("s1"));
+    EXPECT_EQ(ops[0].eventType, EventType::MouseClick);
+    EXPECT_TRUE(ops[0].isMainWindow);
 }
 
-void TestQueryFilter::testExactBoundary() {
+TEST_F(TestQueryFilter, testExactBoundary) {
     // time >= start AND time <= end（注意是 <=）
     Database::instance().batchInsert({
         makeOp(base_),
@@ -94,55 +87,53 @@ void TestQueryFilter::testExactBoundary() {
     f.limit = 100;
     auto ops = Database::instance().queryOperations(f);
     // time >= base_ AND time <= base_ → 1条
-    QCOMPARE(ops.size(), 1);
+    EXPECT_EQ(ops.size(), 1);
 }
 
-void TestQueryFilter::testNoResults() {
+TEST_F(TestQueryFilter, testNoResults) {
     QueryFilter f;
     f.startTime = QDateTime::fromMSecsSinceEpoch(base_ + 1000);
     f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 2000);
     f.limit = 100;
     auto ops = Database::instance().queryOperations(f);
-    QVERIFY(ops.isEmpty());
+    EXPECT_TRUE(ops.isEmpty());
 }
 
-void TestQueryFilter::testLimitZero() {
+TEST_F(TestQueryFilter, testLimitZero) {
     Database::instance().batchInsert({makeOp(base_), makeOp(base_ + 1)});
     QueryFilter f;
     f.startTime = QDateTime::fromMSecsSinceEpoch(base_ - 1);
     f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 10);
     f.limit = 0;
     auto ops = Database::instance().queryOperations(f);
-    QCOMPARE(ops.size(), 0);
+    EXPECT_EQ(ops.size(), 0);
 }
 
-void TestQueryFilter::testLargeTimestamp() {
+TEST_F(TestQueryFilter, testLargeTimestamp) {
     // 远未来时间戳
     qint64 farTs = QDateTime(QDate(2099, 12, 31), QTime(23, 59, 59)).toMSecsSinceEpoch();
     Operation op = makeOp(farTs);
-    QVERIFY(Database::instance().insertOperation(op));
+    EXPECT_TRUE(Database::instance().insertOperation(op));
     QueryFilter f;
     f.startTime = QDateTime::fromMSecsSinceEpoch(farTs - 1);
     f.endTime = QDateTime::fromMSecsSinceEpoch(farTs + 1);
     f.limit = 10;
     auto ops = Database::instance().queryOperations(f);
-    QCOMPARE(ops.size(), 1);
-    QCOMPARE(ops[0].timestamp, farTs);
+    EXPECT_EQ(ops.size(), 1);
+    EXPECT_EQ(ops[0].timestamp, farTs);
 }
 
-void TestQueryFilter::testSpecialCharsInSessionId() {
+TEST_F(TestQueryFilter, testSpecialCharsInSessionId) {
     QString weird = "s'es\"s\nID\t特殊字符";
     Operation op = makeOp(base_, weird);
-    QVERIFY(Database::instance().insertOperation(op));
+    EXPECT_TRUE(Database::instance().insertOperation(op));
     QueryFilter f;
     f.startTime = QDateTime::fromMSecsSinceEpoch(base_ - 1);
     f.endTime = QDateTime::fromMSecsSinceEpoch(base_ + 10);
     f.sessionId = weird;
     f.limit = 10;
     auto ops = Database::instance().queryOperations(f);
-    QCOMPARE(ops.size(), 1);
-    QCOMPARE(ops[0].sessionId, weird);
+    EXPECT_EQ(ops.size(), 1);
+    EXPECT_EQ(ops[0].sessionId, weird);
 }
 
-QTEST_MAIN(TestQueryFilter)
-#include "TestQueryFilter.moc"

@@ -9,8 +9,9 @@ namespace behavior {
 
 QList<Operation> HeatmapAnalyzer::filterMainWindow(const QList<Operation>& ops) {
     QList<Operation> out;
-    for (const auto& op : ops)
+    for (const auto& op : ops) {
         if (op.isMainWindow) out.append(op);
+    }
     return out;
 }
 

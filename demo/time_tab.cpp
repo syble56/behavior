@@ -40,14 +40,7 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
     QString endBucket = end.toString("yyyy-MM-dd");
     int rangeDays = start.date().daysTo(end.date()) + 1;
 
-    bool useAgg = false;
-    if (rangeDays > 90) {
-        QSqlQuery q0(sqlDb);
-        q0.exec("SELECT MIN(time_bucket), MAX(time_bucket) FROM agg_operation_stats WHERE length(time_bucket) = 10");
-        QString aggMinDay, aggMaxDay;
-        if (q0.next()) { aggMinDay = q0.value(0).toString(); aggMaxDay = q0.value(1).toString(); }
-        if (!aggMinDay.isEmpty() && startBucket >= aggMinDay && endBucket <= aggMaxDay) useAgg = true;
-    }
+    bool useAgg = (rangeDays > 7);
 
     QSqlQuery q(sqlDb);
     chart_->detachItems();
@@ -84,9 +77,11 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
             styleBarChart(chart, QColor("#10B981"));
             chart->setSamples(timeData);
             chart->attach(chart_);
-            if (n == 1) chart_->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
-            else chart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, 1);
-        } else {
+            if (n == 1) {
+                chart_->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
+            } else {
+                chart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, 1);
+            }
             auto* curve = new QwtPlotCurve("Time Distribution");
             QVector<double> x(n);
             for (int i = 0; i < n; ++i) x[i] = i;

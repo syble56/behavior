@@ -28,8 +28,9 @@ QAction* ShortcutResolver::findAction(QWidget* widget, const QKeySequence& seq) 
     if (!widget || seq.isEmpty()) return nullptr;
     QList<QAction*> actions = getAllActions(widget);
     for (QAction* a : actions) {
-        if (!a->shortcut().isEmpty() && a->shortcut().matches(seq) == QKeySequence::ExactMatch)
+        if (!a->shortcut().isEmpty() && a->shortcut().matches(seq) == QKeySequence::ExactMatch) {
             return a;
+        }
     }
     return nullptr;
 }

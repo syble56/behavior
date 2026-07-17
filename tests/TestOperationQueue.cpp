@@ -1,5 +1,5 @@
 // TestOperationQueue.cpp — 队列入队/出队/背压/线程安全
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QThread>
 #include <QList>
 #include <atomic>
@@ -20,120 +20,112 @@ Operation makeOp(int id) {
 }
 } // namespace
 
-class TestOperationQueue : public QObject {
-    Q_OBJECT
-private slots:
-    void testEnqueueDequeue();
-    void testDequeueEmpty();
-    void testDequeuePartial();
-    void testSize();
-    void testFIFO();
-    void testMoveSemantics();
-    void testHighWatermarkDrop();
-    void testDroppedCount();
-    void testWaitForDataTimeout();
-    void testWaitForDataAvailable();
-    void testConcurrentProducerConsumer();
-    void testDequeueZero();
-    void testDequeueNegative();
+class TestOperationQueue : public ::testing::Test {
+protected:
 };
 
-void TestOperationQueue::testEnqueueDequeue() {
+TEST_F(TestOperationQueue, testEnqueueDequeue) {
     OperationQueue q;
     q.enqueue(makeOp(1));
     q.enqueue(makeOp(2));
     auto ops = q.dequeue(10);
-    QCOMPARE(ops.size(), 2);
-    QCOMPARE(ops[0].sessionId, QString("sess-1"));
-    QCOMPARE(ops[1].sessionId, QString("sess-2"));
+    EXPECT_EQ(ops.size(), 2);
+    EXPECT_EQ(ops[0].sessionId, QString("sess-1"));
+    EXPECT_EQ(ops[1].sessionId, QString("sess-2"));
 }
 
-void TestOperationQueue::testDequeueEmpty() {
+TEST_F(TestOperationQueue, testDequeueEmpty) {
     OperationQueue q;
     auto ops = q.dequeue(10);
-    QVERIFY(ops.isEmpty());
+    EXPECT_TRUE(ops.isEmpty());
 }
 
-void TestOperationQueue::testDequeuePartial() {
+TEST_F(TestOperationQueue, testDequeuePartial) {
     OperationQueue q;
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 10; ++i) {
         q.enqueue(makeOp(i));
+    }
     auto ops = q.dequeue(3);
-    QCOMPARE(ops.size(), 3);
-    QCOMPARE(q.size(), 7);
+    EXPECT_EQ(ops.size(), 3);
+    EXPECT_EQ(q.size(), 7);
 }
 
-void TestOperationQueue::testSize() {
+TEST_F(TestOperationQueue, testSize) {
     OperationQueue q;
-    QCOMPARE(q.size(), 0);
+    EXPECT_EQ(q.size(), 0);
     q.enqueue(makeOp(1));
     q.enqueue(makeOp(2));
-    QCOMPARE(q.size(), 2);
+    EXPECT_EQ(q.size(), 2);
     q.dequeue(1);
-    QCOMPARE(q.size(), 1);
+    EXPECT_EQ(q.size(), 1);
 }
 
-void TestOperationQueue::testFIFO() {
+TEST_F(TestOperationQueue, testFIFO) {
     OperationQueue q;
-    for (int i = 0; i < 100; ++i)
+    for (int i = 0; i < 100; ++i) {
         q.enqueue(makeOp(i));
+    }
     auto ops = q.dequeue(100);
-    QCOMPARE(ops.size(), 100);
-    for (int i = 0; i < 100; ++i)
-        QCOMPARE(ops[i].timestamp, qint64(i));
+    EXPECT_EQ(ops.size(), 100);
+    for (int i = 0; i < 100; ++i) {
+        EXPECT_EQ(ops[i].timestamp, qint64(i));
+    }
 }
 
-void TestOperationQueue::testMoveSemantics() {
+TEST_F(TestOperationQueue, testMoveSemantics) {
     OperationQueue q;
     Operation op;
     op.sessionId = "moved";
     op.timestamp = 999;
     q.enqueue(std::move(op));
     auto ops = q.dequeue(1);
-    QCOMPARE(ops[0].sessionId, QString("moved"));
-    QCOMPARE(ops[0].timestamp, qint64(999));
+    EXPECT_EQ(ops[0].sessionId, QString("moved"));
+    EXPECT_EQ(ops[0].timestamp, qint64(999));
 }
 
-void TestOperationQueue::testHighWatermarkDrop() {
+TEST_F(TestOperationQueue, testHighWatermarkDrop) {
     OperationQueue q;
     // HIGH_WATERMARK = 50000
-    for (int i = 0; i < 50000; ++i)
+    for (int i = 0; i < 50000; ++i) {
         q.enqueue(makeOp(i));
-    QCOMPARE(q.size(), 50000);
+    }
+    EXPECT_EQ(q.size(), 50000);
     // 再入队应该被丢弃
     q.enqueue(makeOp(50000));
-    QCOMPARE(q.size(), 50000); // 不变
-    QVERIFY(q.droppedCount() > 0);
+    EXPECT_EQ(q.size(), 50000); // 不变
+    EXPECT_TRUE(q.droppedCount() > 0);
 }
 
-void TestOperationQueue::testDroppedCount() {
+TEST_F(TestOperationQueue, testDroppedCount) {
     OperationQueue q;
-    QCOMPARE(q.droppedCount(), qint64(0));
-    for (int i = 0; i < 50000; ++i)
+    EXPECT_EQ(q.droppedCount(), qint64(0));
+    for (int i = 0; i < 50000; ++i) {
         q.enqueue(makeOp(i));
-    for (int i = 0; i < 100; ++i)
+    }
+    for (int i = 0; i < 100; ++i) {
         q.enqueue(makeOp(50000 + i)); // 全部丢弃
-    QCOMPARE(q.droppedCount(), qint64(100));
+    }
+    EXPECT_EQ(q.droppedCount(), qint64(100));
 }
 
-void TestOperationQueue::testWaitForDataTimeout() {
+TEST_F(TestOperationQueue, testWaitForDataTimeout) {
     OperationQueue q;
     // 空队列，应该超时返回
     QElapsedTimer timer;
     timer.start();
     bool result = q.waitForData(50);
-    QVERIFY(!result);
-    QVERIFY(timer.elapsed() >= 40);  // 至少等了 ~50ms
+    EXPECT_TRUE(!result);
+    EXPECT_TRUE(timer.elapsed() >= 40);  // 至少等了 ~50ms
 }
 
-void TestOperationQueue::testWaitForDataAvailable() {
+TEST_F(TestOperationQueue, testWaitForDataAvailable) {
     OperationQueue q;
     q.enqueue(makeOp(1));
     bool result = q.waitForData(100);
-    QVERIFY(result);
+    EXPECT_TRUE(result);
 }
 
-void TestOperationQueue::testConcurrentProducerConsumer() {
+TEST_F(TestOperationQueue, testConcurrentProducerConsumer) {
     OperationQueue q;
     const int PRODUCER_COUNT = 4;
     const int ITEMS_PER_PRODUCER = 1000;
@@ -153,8 +145,9 @@ void TestOperationQueue::testConcurrentProducerConsumer() {
     std::vector<std::thread> producers;
     for (int p = 0; p < PRODUCER_COUNT; ++p) {
         producers.emplace_back([&q, p]() {
-            for (int i = 0; i < ITEMS_PER_PRODUCER; ++i)
+            for (int i = 0; i < ITEMS_PER_PRODUCER; ++i) {
                 q.enqueue(makeOp(p * ITEMS_PER_PRODUCER + i));
+            }
         });
     }
 
@@ -164,25 +157,23 @@ void TestOperationQueue::testConcurrentProducerConsumer() {
     // 等待消费者完成
     consumer.join();
 
-    QCOMPARE(totalDequeued.load(), PRODUCER_COUNT * ITEMS_PER_PRODUCER);
-    QCOMPARE(q.size(), 0);
+    EXPECT_EQ(totalDequeued.load(), PRODUCER_COUNT * ITEMS_PER_PRODUCER);
+    EXPECT_EQ(q.size(), 0);
 }
 
-void TestOperationQueue::testDequeueZero() {
+TEST_F(TestOperationQueue, testDequeueZero) {
     OperationQueue q;
     q.enqueue(makeOp(1));
     auto ops = q.dequeue(0);
-    QVERIFY(ops.isEmpty());
-    QCOMPARE(q.size(), 1); // 没取走
+    EXPECT_TRUE(ops.isEmpty());
+    EXPECT_EQ(q.size(), 1); // 没取走
 }
 
-void TestOperationQueue::testDequeueNegative() {
+TEST_F(TestOperationQueue, testDequeueNegative) {
     OperationQueue q;
     q.enqueue(makeOp(1));
     auto ops = q.dequeue(-1);
-    QVERIFY(ops.isEmpty());
-    QCOMPARE(q.size(), 1);
+    EXPECT_TRUE(ops.isEmpty());
+    EXPECT_EQ(q.size(), 1);
 }
 
-QTEST_MAIN(TestOperationQueue)
-#include "TestOperationQueue.moc"

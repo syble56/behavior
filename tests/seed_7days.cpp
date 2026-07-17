@@ -169,11 +169,17 @@ int main(int argc, char* argv[]) {
 
         int opsThisMinute = 0;
         if (dow <= 5) {
-            if (hour >= 9 && hour < 12)       opsThisMinute = rng.bounded(2, 6);
-            else if (hour >= 14 && hour < 18) opsThisMinute = rng.bounded(1, 5);
-            else if (hour >= 12 && hour < 14) opsThisMinute = rng.bounded(0, 2);
-            else if (hour >= 7 && hour < 9)   opsThisMinute = rng.bounded(0, 2);
-            else if (hour >= 18 && hour < 21) opsThisMinute = rng.bounded(0, 1);
+            if (hour >= 9 && hour < 12) {
+                opsThisMinute = rng.bounded(2, 6);
+            } else if (hour >= 14 && hour < 18) {
+                opsThisMinute = rng.bounded(1, 5);
+            } else if (hour >= 12 && hour < 14) {
+                opsThisMinute = rng.bounded(0, 2);
+            } else if (hour >= 7 && hour < 9) {
+                opsThisMinute = rng.bounded(0, 2);
+            } else if (hour >= 18 && hour < 21) {
+                opsThisMinute = rng.bounded(0, 1);
+            }
         } else {
             if (hour >= 10 && hour < 17)       opsThisMinute = rng.bounded(0, 3);
         }

@@ -1,5 +1,5 @@
 // TestBatchWriter.cpp — 批量写入器：写入/flush/信号/线程
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QTemporaryDir>
 #include <QSignalSpy>
 #include <QThread>
@@ -26,25 +26,18 @@ Operation makeOp(int id) {
 }
 } // namespace
 
-class TestBatchWriter : public QObject {
-    Q_OBJECT
-private slots:
-    void init();
-    void cleanup();
+class TestBatchWriter : public ::testing::Test {
+protected:
+    void SetUp() override;
+    void TearDown() override;
 
-    void testStartStop();
-    void testFlushWritesAll();
-    void testWrittenSignal();
-    void testEmptyQueueNoWrite();
-    void testBatchSizeRespected();
-    void testStopFlushesRemaining();
 
-private:
+protected:
     QTemporaryDir* dir_ = nullptr;
     QString path_;
 };
 
-void TestBatchWriter::init() {
+void TestBatchWriter::SetUp() {
     dir_ = new QTemporaryDir;
     path_ = dir_->path() + "/bw_test.db";
     Config::instance().setDatabasePath(path_);
@@ -53,13 +46,13 @@ void TestBatchWriter::init() {
     Database::instance().open(path_);
 }
 
-void TestBatchWriter::cleanup() {
+void TestBatchWriter::TearDown() {
     Database::instance().close();
     delete dir_;
     dir_ = nullptr;
 }
 
-void TestBatchWriter::testStartStop() {
+TEST_F(TestBatchWriter, testStartStop) {
     OperationQueue queue;
     BatchWriter writer(&queue);
     writer.start();
@@ -67,18 +60,19 @@ void TestBatchWriter::testStartStop() {
     queue.enqueue(makeOp(0));
     QSignalSpy spy(&writer, &BatchWriter::written);
     writer.flush();
-    QVERIFY(spy.wait(2000)); // 线程在运行才能收到信号
+    EXPECT_TRUE(spy.wait(2000)); // 线程在运行才能收到信号
     writer.stop();
     // stop 后再 flush 不应触发（线程已退出）
     QSignalSpy spy2(&writer, &BatchWriter::written);
     writer.flush();
-    QVERIFY(!spy2.wait(500));
+    EXPECT_TRUE(!spy2.wait(500));
 }
 
-void TestBatchWriter::testFlushWritesAll() {
+TEST_F(TestBatchWriter, testFlushWritesAll) {
     OperationQueue queue;
-    for (int i = 0; i < 25; ++i)
+    for (int i = 0; i < 25; ++i) {
         queue.enqueue(makeOp(i));
+    }
 
     BatchWriter writer(&queue);
     writer.start();
@@ -92,13 +86,14 @@ void TestBatchWriter::testFlushWritesAll() {
     f.endTime = QDateTime::currentDateTime().addSecs(10);
     f.limit = 1000;
     auto ops = Database::instance().queryOperations(f);
-    QCOMPARE(ops.size(), 25);
+    EXPECT_EQ(ops.size(), 25);
 }
 
-void TestBatchWriter::testWrittenSignal() {
+TEST_F(TestBatchWriter, testWrittenSignal) {
     OperationQueue queue;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i) {
         queue.enqueue(makeOp(i));
+    }
 
     BatchWriter writer(&queue);
     QSignalSpy spy(&writer, &BatchWriter::written);
@@ -107,15 +102,16 @@ void TestBatchWriter::testWrittenSignal() {
     spy.wait(1000);
     writer.stop();
 
-    QVERIFY(spy.count() >= 1);
+    EXPECT_TRUE(spy.count() >= 1);
     // 总写入数 = 5
     int totalWritten = 0;
-    for (int i = 0; i < spy.count(); ++i)
+    for (int i = 0; i < spy.count(); ++i) {
         totalWritten += spy.at(i).at(0).toInt();
-    QCOMPARE(totalWritten, 5);
+    }
+    EXPECT_EQ(totalWritten, 5);
 }
 
-void TestBatchWriter::testEmptyQueueNoWrite() {
+TEST_F(TestBatchWriter, testEmptyQueueNoWrite) {
     OperationQueue queue;
     BatchWriter writer(&queue);
     QSignalSpy spy(&writer, &BatchWriter::written);
@@ -123,15 +119,16 @@ void TestBatchWriter::testEmptyQueueNoWrite() {
     QThread::msleep(300); // 等几个 tick
     writer.stop();
     // 空队列不应触发 written
-    QCOMPARE(spy.count(), 0);
+    EXPECT_EQ(spy.count(), 0);
 }
 
-void TestBatchWriter::testBatchSizeRespected() {
+TEST_F(TestBatchWriter, testBatchSizeRespected) {
     // batchSize=10, 入队 25 条
     // 定时器触发时应每次最多写 10 条
     OperationQueue queue;
-    for (int i = 0; i < 25; ++i)
+    for (int i = 0; i < 25; ++i) {
         queue.enqueue(makeOp(i));
+    }
 
     BatchWriter writer(&queue);
     QSignalSpy spy(&writer, &BatchWriter::written);
@@ -143,14 +140,15 @@ void TestBatchWriter::testBatchSizeRespected() {
     // 第一个批次不应超过 batchSize
     if (spy.count() > 0) {
         int firstBatch = spy.at(0).at(0).toInt();
-        QVERIFY(firstBatch <= 10);
+        EXPECT_TRUE(firstBatch <= 10);
     }
 }
 
-void TestBatchWriter::testStopFlushesRemaining() {
+TEST_F(TestBatchWriter, testStopFlushesRemaining) {
     OperationQueue queue;
-    for (int i = 0; i < 15; ++i)
+    for (int i = 0; i < 15; ++i) {
         queue.enqueue(makeOp(i));
+    }
 
     BatchWriter writer(&queue);
     writer.start();
@@ -162,8 +160,6 @@ void TestBatchWriter::testStopFlushesRemaining() {
     f.endTime = QDateTime::currentDateTime().addSecs(10);
     f.limit = 1000;
     auto ops = Database::instance().queryOperations(f);
-    QCOMPARE(ops.size(), 15);
+    EXPECT_EQ(ops.size(), 15);
 }
 
-QTEST_MAIN(TestBatchWriter)
-#include "TestBatchWriter.moc"

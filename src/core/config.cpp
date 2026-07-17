@@ -11,8 +11,9 @@ Config& Config::instance() {
 Config::Config() = default;
 
 void Config::addIgnoreControl(const QString& className) {
-    if (!ignoreControls_.contains(className))
+    if (!ignoreControls_.contains(className)) {
         ignoreControls_.append(className);
+    }
 }
 
 void Config::removeIgnoreControl(const QString& className) {

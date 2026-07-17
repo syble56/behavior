@@ -1,5 +1,5 @@
 // TestAggregator.cpp — 聚合逻辑正确性验证
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -49,65 +49,38 @@ qint64 aggSum(const QString& table, const QString& col) {
 }
 } // namespace
 
-class TestAggregator : public QObject {
-    Q_OBJECT
-private slots:
-    void init();
-    void cleanup();
+class TestAggregator : public ::testing::Test {
+protected:
+    void SetUp() override;
+    void TearDown() override;
 
     // ===== 操作聚合 =====
-    void testAggregateOperationsByHour();
-    void testAggregateOperationsByDay();
-    void testAggregateOperationsEmptyRange();
-    void testAggregateOperationsActionKeyFallback();
 
     // ===== 模块聚合 =====
-    void testAggregateModules();
-    void testAggregateModulesUnknownClass();
 
     // ===== 输入方式聚合 =====
-    void testAggregateInputs();
-    void testAggregateInputsAllMethods();
 
     // ===== 热力图聚合 =====
-    void testAggregateHeatmapOnlyMainWindow();
-    void testAggregateHeatmapExcludesNonClickEvents();
 
     // ===== 对话框聚合 =====
-    void testAggregateDialogs();
-    void testAggregateDialogsDurationCalc();
 
     // ===== 时间分布 =====
-    void testTimeDistribution();
-    void testTimeDistributionHourlyBuckets();
 
     // ===== 幂等性 =====
-    void testAggregateIdempotent();
 
     // ===== 信号 =====
-    void testAggregationCompletedSignal();
 
     // ===== 粒度切换 =====
-    void testGranularityFormat();
 
     // ===== 跨天边界 =====
-    void testCrossDayHourBuckets();
-    void testCrossDayDayBuckets();
-    void testCrossDayTimeDistribution();
-    void testCrossDayMidnightExact();
-    void testCrossDayOperationsSameAction();
-    void testCrossDayModuleConsistency();
-    void testCrossDayHeatmapSplit();
-    void testCrossDayDialogAcrossMidnight();
-    void testCrossDayIdempotent();
 
-private:
+protected:
     QTemporaryDir* dir_ = nullptr;
     QString path_;
     QDateTime baseTime_;
 };
 
-void TestAggregator::init() {
+void TestAggregator::SetUp() {
     dir_ = new QTemporaryDir;
     path_ = dir_->path() + "/agg_test.db";
     Config::instance().setDatabasePath(path_);
@@ -116,7 +89,7 @@ void TestAggregator::init() {
     baseTime_ = QDateTime(QDate(2026, 6, 15), QTime(10, 30, 0));
 }
 
-void TestAggregator::cleanup() {
+void TestAggregator::TearDown() {
     Database::instance().close();
     delete dir_;
     dir_ = nullptr;
@@ -124,13 +97,14 @@ void TestAggregator::cleanup() {
 
 // ========== 操作聚合 ==========
 
-void TestAggregator::testAggregateOperationsByHour() {
+TEST_F(TestAggregator, testAggregateOperationsByHour) {
     // 在同一小时内插入 5 条操作
     qint64 base = baseTime_.toMSecsSinceEpoch();
     QList<Operation> ops;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i) {
         ops << makeOp(base + i * 60000, EventType::MouseClick, InputMethod::Mouse,
                       "MainWindow", true, "save", 10);
+    }
     Database::instance().batchInsert(ops);
 
     Aggregator agg;
@@ -139,16 +113,17 @@ void TestAggregator::testAggregateOperationsByHour() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT count FROM agg_operation_stats WHERE action_key='save' AND granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 5);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 5);
 }
 
-void TestAggregator::testAggregateOperationsByDay() {
+TEST_F(TestAggregator, testAggregateOperationsByDay) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     QList<Operation> ops;
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         ops << makeOp(base + i * 3600000, EventType::MouseClick, InputMethod::Mouse,
                       "MainWindow", true, "open", 10);
+    }
     Database::instance().batchInsert(ops);
 
     Aggregator agg;
@@ -157,18 +132,18 @@ void TestAggregator::testAggregateOperationsByDay() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT count FROM agg_operation_stats WHERE action_key='open' AND granularity='day'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 3);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 3);
 }
 
-void TestAggregator::testAggregateOperationsEmptyRange() {
+TEST_F(TestAggregator, testAggregateOperationsEmptyRange) {
     // 没数据，聚合不应崩溃，结果应为0条
     Aggregator agg;
     agg.aggregateRange(baseTime_, baseTime_.addSecs(3600), Aggregator::Granularity::Hour);
-    QCOMPARE(aggCount("agg_operation_stats"), qint64(0));
+    EXPECT_EQ(aggCount("agg_operation_stats"), qint64(0));
 }
 
-void TestAggregator::testAggregateOperationsActionKeyFallback() {
+TEST_F(TestAggregator, testAggregateOperationsActionKeyFallback) {
     // action_name 为空 → 回退到 control_name → control_class → event_type
     qint64 ts = baseTime_.toMSecsSinceEpoch();
     Operation op;
@@ -188,13 +163,13 @@ void TestAggregator::testAggregateOperationsActionKeyFallback() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT action_key FROM agg_operation_stats WHERE granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("btnRefresh"));
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("btnRefresh"));
 }
 
 // ========== 模块聚合 ==========
 
-void TestAggregator::testAggregateModules() {
+TEST_F(TestAggregator, testAggregateModules) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().batchInsert({
         makeOp(base, EventType::MouseClick, InputMethod::Mouse, "SettingsDialog", false),
@@ -208,15 +183,15 @@ void TestAggregator::testAggregateModules() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT module_class, count FROM agg_module_stats WHERE granularity='hour' ORDER BY count DESC");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("SettingsDialog"));
-    QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("MainWindow"));
-    QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("SettingsDialog"));
+    EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("MainWindow"));
+    EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
-void TestAggregator::testAggregateModulesUnknownClass() {
+TEST_F(TestAggregator, testAggregateModulesUnknownClass) {
     // window_class 为空 → 应聚合为 'unknown'
     qint64 ts = baseTime_.toMSecsSinceEpoch();
     Operation op = makeOp(ts);
@@ -229,13 +204,13 @@ void TestAggregator::testAggregateModulesUnknownClass() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT module_class FROM agg_module_stats WHERE granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("unknown"));
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("unknown"));
 }
 
 // ========== 输入方式聚合 ==========
 
-void TestAggregator::testAggregateInputs() {
+TEST_F(TestAggregator, testAggregateInputs) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().batchInsert({
         makeOp(base, EventType::MouseClick, InputMethod::Mouse),
@@ -249,15 +224,15 @@ void TestAggregator::testAggregateInputs() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT input_method, count FROM agg_input_stats WHERE granularity='hour' ORDER BY count DESC");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("mouse"));
-    QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("keyboard"));
-    QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("mouse"));
+    EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("keyboard"));
+    EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
-void TestAggregator::testAggregateInputsAllMethods() {
+TEST_F(TestAggregator, testAggregateInputsAllMethods) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().batchInsert({
         makeOp(base, EventType::MouseClick, InputMethod::Mouse),
@@ -268,12 +243,12 @@ void TestAggregator::testAggregateInputsAllMethods() {
     Aggregator agg;
     agg.aggregateRange(baseTime_, baseTime_.addSecs(3600), Aggregator::Granularity::Hour);
 
-    QCOMPARE(aggCount("agg_input_stats"), qint64(3));
+    EXPECT_EQ(aggCount("agg_input_stats"), qint64(3));
 }
 
 // ========== 热力图聚合 ==========
 
-void TestAggregator::testAggregateHeatmapOnlyMainWindow() {
+TEST_F(TestAggregator, testAggregateHeatmapOnlyMainWindow) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().batchInsert({
         makeOp(base, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "", 10),
@@ -287,13 +262,13 @@ void TestAggregator::testAggregateHeatmapOnlyMainWindow() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT heat_region, count FROM agg_heatmap_stats WHERE granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 10);
-    QCOMPARE(q.value(1).toInt(), 1);
-    QVERIFY(!q.next()); // 只有一条
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 10);
+    EXPECT_EQ(q.value(1).toInt(), 1);
+    EXPECT_TRUE(!q.next()); // 只有一条
 }
 
-void TestAggregator::testAggregateHeatmapExcludesNonClickEvents() {
+TEST_F(TestAggregator, testAggregateHeatmapExcludesNonClickEvents) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().batchInsert({
         makeOp(base, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "", 10),
@@ -308,13 +283,13 @@ void TestAggregator::testAggregateHeatmapExcludesNonClickEvents() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT SUM(count) FROM agg_heatmap_stats WHERE granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 1);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1);
 }
 
 // ========== 对话框聚合 ==========
 
-void TestAggregator::testAggregateDialogs() {
+TEST_F(TestAggregator, testAggregateDialogs) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // dialog_open + dialog_close 事件
     Operation op0 = makeOp(base, EventType::DialogOpen, InputMethod::Mouse, "SettingsDialog", false);
@@ -333,13 +308,13 @@ void TestAggregator::testAggregateDialogs() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT open_count, total_duration, avg_duration FROM agg_dialog_stats WHERE dialog_class='SettingsDialog'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 1);       // 1次打开
-    QCOMPARE(q.value(1).toInt(), 8000);     // 5000+3000
-    QCOMPARE(q.value(2).toInt(), 4000);     // avg = 4000
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1);       // 1次打开
+    EXPECT_EQ(q.value(1).toInt(), 8000);     // 5000+3000
+    EXPECT_EQ(q.value(2).toInt(), 4000);     // avg = 4000
 }
 
-void TestAggregator::testAggregateDialogsDurationCalc() {
+TEST_F(TestAggregator, testAggregateDialogsDurationCalc) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // duration 为 nullopt → COALESCE 为 0
     Operation op = makeOp(base, EventType::DialogClose, InputMethod::Mouse, "MsgBox", false);
@@ -353,14 +328,14 @@ void TestAggregator::testAggregateDialogsDurationCalc() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT total_duration, avg_duration FROM agg_dialog_stats WHERE dialog_class='MsgBox'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 0);
-    QVERIFY(q.value(1).isNull() || q.value(1).toInt() == 0);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 0);
+    EXPECT_TRUE(q.value(1).isNull() || q.value(1).toInt() == 0);
 }
 
 // ========== 时间分布 ==========
 
-void TestAggregator::testTimeDistribution() {
+TEST_F(TestAggregator, testTimeDistribution) {
     qint64 base = baseTime_.toMSecsSinceEpoch(); // 10:30
     Database::instance().batchInsert({
         makeOp(base),       // 10:30
@@ -374,12 +349,12 @@ void TestAggregator::testTimeDistribution() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT hour, count FROM agg_time_distribution WHERE date='2026-06-15'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 10);  // 10点
-    QCOMPARE(q.value(1).toInt(), 3);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 10);  // 10点
+    EXPECT_EQ(q.value(1).toInt(), 3);
 }
 
-void TestAggregator::testTimeDistributionHourlyBuckets() {
+TEST_F(TestAggregator, testTimeDistributionHourlyBuckets) {
     // 跨3个小时的数据
     qint64 h10 = QDateTime(QDate(2026, 6, 15), QTime(10, 0, 0)).toMSecsSinceEpoch();
     qint64 h11 = QDateTime(QDate(2026, 6, 15), QTime(11, 0, 0)).toMSecsSinceEpoch();
@@ -399,14 +374,14 @@ void TestAggregator::testTimeDistributionHourlyBuckets() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT hour, count FROM agg_time_distribution WHERE date='2026-06-15' ORDER BY hour");
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toInt(), 10); QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toInt(), 11); QCOMPARE(q.value(1).toInt(), 1);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toInt(), 12); QCOMPARE(q.value(1).toInt(), 3);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toInt(), 10); EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toInt(), 11); EXPECT_EQ(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toInt(), 12); EXPECT_EQ(q.value(1).toInt(), 3);
 }
 
 // ========== 幂等性 ==========
 
-void TestAggregator::testAggregateIdempotent() {
+TEST_F(TestAggregator, testAggregateIdempotent) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().batchInsert({
         makeOp(base, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "click", 10),
@@ -425,22 +400,22 @@ void TestAggregator::testAggregateIdempotent() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT count FROM agg_operation_stats WHERE action_key='click' AND granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 2);  // 仍然是2，不是4
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 2);  // 仍然是2，不是4
 }
 
 // ========== 信号 ==========
 
-void TestAggregator::testAggregationCompletedSignal() {
+TEST_F(TestAggregator, testAggregationCompletedSignal) {
     Aggregator agg;
     QSignalSpy spy(&agg, &Aggregator::aggregationCompleted);
     agg.aggregateRange(baseTime_, baseTime_.addSecs(3600), Aggregator::Granularity::Hour);
-    QCOMPARE(spy.count(), 1);
+    EXPECT_EQ(spy.count(), 1);
 }
 
 // ========== 粒度格式 ==========
 
-void TestAggregator::testGranularityFormat() {
+TEST_F(TestAggregator, testGranularityFormat) {
     // Hour 粒度 → "yyyy-MM-dd HH:00"
     // Day 粒度 → "yyyy-MM-dd"
     qint64 base = baseTime_.toMSecsSinceEpoch();
@@ -452,20 +427,20 @@ void TestAggregator::testGranularityFormat() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT DISTINCT time_bucket FROM agg_input_stats WHERE granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("2026-06-15 10:00"));
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("2026-06-15 10:00"));
 
     // 清掉重新测 Day
     q.exec("DELETE FROM agg_input_stats");
     agg.aggregateRange(baseTime_, baseTime_.addDays(1), Aggregator::Granularity::Day);
     q.exec("SELECT DISTINCT time_bucket FROM agg_input_stats WHERE granularity='day'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toString(), QString("2026-06-15"));
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("2026-06-15"));
 }
 
 // ========== 跨天边界 ==========
 
-void TestAggregator::testCrossDayHourBuckets() {
+TEST_F(TestAggregator, testCrossDayHourBuckets) {
     // 数据跨越午夜：6/15 23:30 ~ 6/16 00:30
     QDateTime day1(QDate(2026, 6, 15), QTime(23, 30, 0));
     QDateTime day2(QDate(2026, 6, 16), QTime(0, 30, 0));
@@ -486,15 +461,15 @@ void TestAggregator::testCrossDayHourBuckets() {
     QSqlQuery q(db);
     // 6/15 23点桶 → 2条
     q.exec("SELECT count FROM agg_input_stats WHERE time_bucket='2026-06-15 23:00' AND granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 2);
     // 6/16 00点桶 → 2条
     q.exec("SELECT count FROM agg_input_stats WHERE time_bucket='2026-06-16 00:00' AND granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 2);
 }
 
-void TestAggregator::testCrossDayDayBuckets() {
+TEST_F(TestAggregator, testCrossDayDayBuckets) {
     // 3天数据：6/15 2条, 6/16 3条, 6/17 1条
     QDateTime d1(QDate(2026, 6, 15), QTime(10, 0, 0));
     QDateTime d2(QDate(2026, 6, 16), QTime(15, 0, 0));
@@ -515,12 +490,12 @@ void TestAggregator::testCrossDayDayBuckets() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT time_bucket, count FROM agg_input_stats WHERE granularity='day' ORDER BY time_bucket");
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-15")); QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-16")); QCOMPARE(q.value(1).toInt(), 3);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-17")); QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-15")); EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-16")); EXPECT_EQ(q.value(1).toInt(), 3);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-17")); EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
-void TestAggregator::testCrossDayTimeDistribution() {
+TEST_F(TestAggregator, testCrossDayTimeDistribution) {
     // 跨午夜的时间分布：23点和次日0点
     QDateTime late(QDate(2026, 6, 15), QTime(23, 45, 0));
     QDateTime early(QDate(2026, 6, 16), QTime(0, 15, 0));
@@ -540,15 +515,15 @@ void TestAggregator::testCrossDayTimeDistribution() {
     QSqlQuery q(db);
     // 6/15 23点 → 2条
     q.exec("SELECT count FROM agg_time_distribution WHERE date='2026-06-15' AND hour=23");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 2);
     // 6/16 0点 → 3条
     q.exec("SELECT count FROM agg_time_distribution WHERE date='2026-06-16' AND hour=0");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 3);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 3);
 }
 
-void TestAggregator::testCrossDayMidnightExact() {
+TEST_F(TestAggregator, testCrossDayMidnightExact) {
     // 恰好在午夜 00:00:00 的数据
     QDateTime midnight(QDate(2026, 6, 16), QTime(0, 0, 0));
     QDateTime justBefore(QDate(2026, 6, 15), QTime(23, 59, 59));
@@ -566,15 +541,15 @@ void TestAggregator::testCrossDayMidnightExact() {
     QSqlQuery q(db);
     // 6/15 23点 → 1条（23:59:59）
     q.exec("SELECT count FROM agg_input_stats WHERE time_bucket='2026-06-15 23:00' AND granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 1);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1);
     // 6/16 00点 → 2条（00:00:00 和 00:00:01）
     q.exec("SELECT count FROM agg_input_stats WHERE time_bucket='2026-06-16 00:00' AND granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 2);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 2);
 }
 
-void TestAggregator::testCrossDayOperationsSameAction() {
+TEST_F(TestAggregator, testCrossDayOperationsSameAction) {
     // 同一 action 跨3天，验证按天聚合各自独立
     QDateTime d1(QDate(2026, 6, 15), QTime(9, 0, 0));
     QDateTime d2(QDate(2026, 6, 16), QTime(9, 0, 0));
@@ -595,12 +570,12 @@ void TestAggregator::testCrossDayOperationsSameAction() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT time_bucket, count FROM agg_operation_stats WHERE action_key='save' AND granularity='day' ORDER BY time_bucket");
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-15")); QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-16")); QCOMPARE(q.value(1).toInt(), 1);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-17")); QCOMPARE(q.value(1).toInt(), 3);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-15")); EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-16")); EXPECT_EQ(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-17")); EXPECT_EQ(q.value(1).toInt(), 3);
 }
 
-void TestAggregator::testCrossDayModuleConsistency() {
+TEST_F(TestAggregator, testCrossDayModuleConsistency) {
     // 同一模块跨天，验证每天独立计数
     QDateTime d1(QDate(2026, 6, 15), QTime(14, 0, 0));
     QDateTime d2(QDate(2026, 6, 16), QTime(14, 0, 0));
@@ -617,11 +592,11 @@ void TestAggregator::testCrossDayModuleConsistency() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT time_bucket, count FROM agg_module_stats WHERE module_class='SettingsDlg' AND granularity='day' ORDER BY time_bucket");
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-15")); QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-16")); QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-15")); EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-16")); EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
-void TestAggregator::testCrossDayHeatmapSplit() {
+TEST_F(TestAggregator, testCrossDayHeatmapSplit) {
     // 热力图跨天：同一 heat_region 在两天分别计数
     QDateTime d1(QDate(2026, 6, 15), QTime(10, 0, 0));
     QDateTime d2(QDate(2026, 6, 16), QTime(10, 0, 0));
@@ -638,11 +613,11 @@ void TestAggregator::testCrossDayHeatmapSplit() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT time_bucket, count FROM agg_heatmap_stats WHERE heat_region=50 AND granularity='day' ORDER BY time_bucket");
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-15")); QCOMPARE(q.value(1).toInt(), 2);
-    QVERIFY(q.next()); QCOMPARE(q.value(0).toString(), QString("2026-06-16")); QCOMPARE(q.value(1).toInt(), 1);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-15")); EXPECT_EQ(q.value(1).toInt(), 2);
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toString(), QString("2026-06-16")); EXPECT_EQ(q.value(1).toInt(), 1);
 }
 
-void TestAggregator::testCrossDayDialogAcrossMidnight() {
+TEST_F(TestAggregator, testCrossDayDialogAcrossMidnight) {
     // dialog_close 跨午夜：23:59 关闭一个，00:01 关闭另一个
     QDateTime late(QDate(2026, 6, 15), QTime(23, 59, 0));
     QDateTime early(QDate(2026, 6, 16), QTime(0, 1, 0));
@@ -663,17 +638,17 @@ void TestAggregator::testCrossDayDialogAcrossMidnight() {
     QSqlQuery q(db);
     // 6/15 23点桶
     q.exec("SELECT open_count, total_duration FROM agg_dialog_stats WHERE dialog_class='MsgBox' AND time_bucket='2026-06-15 23:00'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 0);       // 无 dialog_open
-    QCOMPARE(q.value(1).toInt(), 2000);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 0);       // 无 dialog_open
+    EXPECT_EQ(q.value(1).toInt(), 2000);
     // 6/16 00点桶
     q.exec("SELECT open_count, total_duration FROM agg_dialog_stats WHERE dialog_class='MsgBox' AND time_bucket='2026-06-16 00:00'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 0);       // 无 dialog_open
-    QCOMPARE(q.value(1).toInt(), 4000);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 0);       // 无 dialog_open
+    EXPECT_EQ(q.value(1).toInt(), 4000);
 }
 
-void TestAggregator::testCrossDayIdempotent() {
+TEST_F(TestAggregator, testCrossDayIdempotent) {
     // 跨天聚合两次，验证幂等
     QDateTime d1(QDate(2026, 6, 15), QTime(22, 0, 0));
     QDateTime d2(QDate(2026, 6, 16), QTime(2, 0, 0));
@@ -693,9 +668,7 @@ void TestAggregator::testCrossDayIdempotent() {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     q.exec("SELECT SUM(count) FROM agg_input_stats WHERE granularity='hour'");
-    QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 3);
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 3);
 }
 
-QTEST_MAIN(TestAggregator)
-#include "TestAggregator.moc"

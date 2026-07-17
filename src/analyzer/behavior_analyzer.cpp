@@ -37,13 +37,21 @@ AnalysisResult BehaviorAnalyzer::run(const QString& name, const QDateTime& start
                                      bool onlyMainWindow) {
     QList<Operation> ops = fetchData(start, end, onlyMainWindow);
     AnalyzerBase* a = nullptr;
-    if (name == "frequency") a = frequency_.get();
-    else if (name == "module")   a = module_.get();
-    else if (name == "time")     a = time_.get();
-    else if (name == "input")    a = input_.get();
-    else if (name == "heatmap")  a = heatmap_.get();
-    else if (name == "dialog")   a = dialog_.get();
-    else a = AnalyzerRegistry::instance().get(name);
+    if (name == "frequency") {
+        a = frequency_.get();
+    } else if (name == "module") {
+        a = module_.get();
+    } else if (name == "time") {
+        a = time_.get();
+    } else if (name == "input") {
+        a = input_.get();
+    } else if (name == "heatmap") {
+        a = heatmap_.get();
+    } else if (name == "dialog") {
+        a = dialog_.get();
+    } else {
+        a = AnalyzerRegistry::instance().get(name);
+    }
 
     if (!a) {
         AnalysisResult r;

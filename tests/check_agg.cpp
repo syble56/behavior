@@ -119,16 +119,31 @@ int main(int argc, char* argv[]) {
 
     // 差异检查
     out << "\n=== DIFF CHECK ===\n";
-    if (rawTotal == inputTotal)  out << "  raw == input(day):  OK\n";
-    else                         out << "  raw != input(day):  MISMATCH! diff=" << (rawTotal - inputTotal) << "\n";
-    if (rawTotal == hourTotal)   out << "  raw == input(hour): OK\n";
-    else                         out << "  raw != input(hour): MISMATCH! diff=" << (rawTotal - hourTotal) << "\n";
-    if (rawTotal == opTotal)     out << "  raw == op_stats:    OK\n";
-    else                         out << "  raw != op_stats:    MISMATCH! diff=" << (rawTotal - opTotal) << "\n";
-    if (rawTotal == modTotal)    out << "  raw == module:      OK\n";
-    else                         out << "  raw != module:      MISMATCH! diff=" << (rawTotal - modTotal) << "\n";
-    if (rawTotal == tdTotal)     out << "  raw == time_dist:   OK\n";
-    else                         out << "  raw != time_dist:   MISMATCH! diff=" << (rawTotal - tdTotal) << "\n";
+    if (rawTotal == inputTotal) {
+        out << "  raw == input(day):  OK\n";
+    } else {
+        out << "  raw != input(day):  MISMATCH! diff=" << (rawTotal - inputTotal) << "\n";
+    }
+    if (rawTotal == hourTotal) {
+        out << "  raw == input(hour): OK\n";
+    } else {
+        out << "  raw != input(hour): MISMATCH! diff=" << (rawTotal - hourTotal) << "\n";
+    }
+    if (rawTotal == opTotal) {
+        out << "  raw == op_stats:    OK\n";
+    } else {
+        out << "  raw != op_stats:    MISMATCH! diff=" << (rawTotal - opTotal) << "\n";
+    }
+    if (rawTotal == modTotal) {
+        out << "  raw == module:      OK\n";
+    } else {
+        out << "  raw != module:      MISMATCH! diff=" << (rawTotal - modTotal) << "\n";
+    }
+    if (rawTotal == tdTotal) {
+        out << "  raw == time_dist:   OK\n";
+    } else {
+        out << "  raw != time_dist:   MISMATCH! diff=" << (rawTotal - tdTotal) << "\n";
+    }
 
     Database::instance().close();
     out << "\nDone.\n";

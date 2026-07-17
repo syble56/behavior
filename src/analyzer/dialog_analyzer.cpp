@@ -19,15 +19,19 @@ AnalysisResult DialogAnalyzer::analyze(const QList<Operation>& ops) {
     for (const auto& op : ops) {
         // 标识优先级：windowTitle > controlName > windowClass
         QString dialogKey;
-        if (!op.windowTitle.isEmpty())
+        if (!op.windowTitle.isEmpty()) {
             dialogKey = op.windowTitle;
-        else if (!op.controlName.isEmpty())
+        }
+        else if (!op.controlName.isEmpty()) {
             dialogKey = op.controlName;
-        else
+        }
+        else {
             dialogKey = op.windowClass;
+        }
         // 加上 module 前缀
-        if (!op.module.isEmpty())
+        if (!op.module.isEmpty()) {
             dialogKey = op.module + "/" + dialogKey;
+        }
         
         if (op.eventType == EventType::DialogOpen) {
             stats[dialogKey].openCount++;
@@ -57,10 +61,12 @@ AnalysisResult DialogAnalyzer::analyze(const QList<Operation>& ops) {
         if (closeCount > 0) {
             QVector<int> sorted = s.durations;
             std::sort(sorted.begin(), sorted.end());
-            if (sorted.size() % 2 == 1)
+            if (sorted.size() % 2 == 1) {
                 median = sorted[sorted.size() / 2];
-            else
+            }
+            else {
                 median = (sorted[sorted.size() / 2 - 1] + sorted[sorted.size() / 2]) / 2;
+            }
             instantCloseRate = s.instantCloseCount * 100.0 / closeCount;
         }
 

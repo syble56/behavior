@@ -20,8 +20,9 @@ void Aggregator::aggregateRange(const QDateTime& start, const QDateTime& end, Gr
     aggregateInputs(start, end, g);
     aggregateHeatmap(start, end, g);
     aggregateDialogs(start, end, g);
-    if (g == Granularity::Hour)
+    if (g == Granularity::Hour) {
         aggregateTimeDistribution(start, end);
+    }
     emit aggregationCompleted(processed);
 }
 
@@ -124,11 +125,11 @@ void Aggregator::aggregateDialogs(const QDateTime& start, const QDateTime& end, 
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
-    // 标识优先级与 dialog_analyzer 一致：windowTitle > controlName > windowClass
-    // open_count 统计 dialog_open，时长统计 dialog_close
+    // 标识优先级与 dialog_analyzer 一致：module/windowTitle > module/controlName > module/windowClass
     QString sql = QString(
         "INSERT OR REPLACE INTO agg_dialog_stats (time_bucket,granularity,dialog_class,open_count,total_duration,avg_duration) "
         "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), '%2', "
+        "CASE WHEN module IS NOT NULL AND module != '' THEN module || '/' ELSE '' END || "
         "COALESCE(NULLIF(window_title,''), NULLIF(control_name,''), window_class), "
         "SUM(CASE WHEN event_type='dialog_open' THEN 1 ELSE 0 END), "
         "SUM(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) ELSE 0 END), "

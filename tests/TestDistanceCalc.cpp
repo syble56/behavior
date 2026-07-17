@@ -1,6 +1,6 @@
 // TestDistanceCalc.cpp — 距离计算正确性验证
 // P0: 验证 sqrt(dx^2 + dy^2) 的逐点距离、日均值、总量
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QTemporaryDir>
 #include <QDateTime>
 #include <QSqlQuery>
@@ -47,94 +47,80 @@ double computeAvgDistance(const QList<QPair<int,int>>& pts) {
 }
 } // namespace
 
-class TestDistanceCalc : public QObject {
-    Q_OBJECT
-private slots:
+class TestDistanceCalc : public ::testing::Test {
+protected:
     // --- Pure math tests (no DB needed) ---
-    void testPythagoreanTriple_3_4();
-    void testHorizontalOnly();
-    void testVerticalOnly();
-    void testSinglePoint();
-    void testEmptyPoints();
-    void testSamePoint();
-    void testKnownTrajectory();
-    void testAvgMatchesTotalDivN();
-    void testMaxSingleStep();
 
     // --- DB-backed tests: verify query filters (0,0) ---
-    void testFilterZeroZero();
-    void testNegativeCoordinates();
-    void testLargeCoordinates();
-    void testMixedValidInvalid();
 };
 
 // ===== Pure math =====
 
-void TestDistanceCalc::testPythagoreanTriple_3_4() {
+TEST_F(TestDistanceCalc, testPythagoreanTriple_3_4) {
     // (0,0) -> (3,4) => distance = 5
     QList<QPair<int,int>> pts = {{0,0}, {3,4}};
-    QCOMPARE(computeTotalDistance(pts), 5.0);
+    EXPECT_EQ(computeTotalDistance(pts), 5.0);
 }
 
-void TestDistanceCalc::testHorizontalOnly() {
+TEST_F(TestDistanceCalc, testHorizontalOnly) {
     // (0,0) -> (10,0) -> (20,0) => total = 20, avg = 10
     QList<QPair<int,int>> pts = {{0,0}, {10,0}, {20,0}};
-    QCOMPARE(computeTotalDistance(pts), 20.0);
-    QCOMPARE(computeAvgDistance(pts), 10.0);
+    EXPECT_EQ(computeTotalDistance(pts), 20.0);
+    EXPECT_EQ(computeAvgDistance(pts), 10.0);
 }
 
-void TestDistanceCalc::testVerticalOnly() {
+TEST_F(TestDistanceCalc, testVerticalOnly) {
     // (5,0) -> (5,8) -> (5,8) => total = 8, avg = 4
     QList<QPair<int,int>> pts = {{5,0}, {5,8}, {5,8}};
-    QCOMPARE(computeTotalDistance(pts), 8.0);
-    QCOMPARE(computeAvgDistance(pts), 4.0);
+    EXPECT_EQ(computeTotalDistance(pts), 8.0);
+    EXPECT_EQ(computeAvgDistance(pts), 4.0);
 }
 
-void TestDistanceCalc::testSinglePoint() {
+TEST_F(TestDistanceCalc, testSinglePoint) {
     QList<QPair<int,int>> pts = {{100, 200}};
-    QCOMPARE(computeTotalDistance(pts), 0.0);
-    QCOMPARE(computeAvgDistance(pts), 0.0);
+    EXPECT_EQ(computeTotalDistance(pts), 0.0);
+    EXPECT_EQ(computeAvgDistance(pts), 0.0);
 }
 
-void TestDistanceCalc::testEmptyPoints() {
+TEST_F(TestDistanceCalc, testEmptyPoints) {
     QList<QPair<int,int>> pts;
-    QCOMPARE(computeTotalDistance(pts), 0.0);
-    QCOMPARE(computeAvgDistance(pts), 0.0);
+    EXPECT_EQ(computeTotalDistance(pts), 0.0);
+    EXPECT_EQ(computeAvgDistance(pts), 0.0);
 }
 
-void TestDistanceCalc::testSamePoint() {
+TEST_F(TestDistanceCalc, testSamePoint) {
     // (50,50) -> (50,50) -> (50,50) => all zero
     QList<QPair<int,int>> pts = {{50,50}, {50,50}, {50,50}};
-    QCOMPARE(computeTotalDistance(pts), 0.0);
-    QCOMPARE(computeAvgDistance(pts), 0.0);
+    EXPECT_EQ(computeTotalDistance(pts), 0.0);
+    EXPECT_EQ(computeAvgDistance(pts), 0.0);
 }
 
-void TestDistanceCalc::testKnownTrajectory() {
+TEST_F(TestDistanceCalc, testKnownTrajectory) {
     // (0,0) -> (3,4) -> (3,8) => 5 + 4 = 9, avg = 4.5
     QList<QPair<int,int>> pts = {{0,0}, {3,4}, {3,8}};
-    QCOMPARE(computeTotalDistance(pts), 9.0);
-    QCOMPARE(computeAvgDistance(pts), 4.5);
+    EXPECT_EQ(computeTotalDistance(pts), 9.0);
+    EXPECT_EQ(computeAvgDistance(pts), 4.5);
 }
 
-void TestDistanceCalc::testAvgMatchesTotalDivN() {
+TEST_F(TestDistanceCalc, testAvgMatchesTotalDivN) {
     // Random-ish trajectory
     QList<QPair<int,int>> pts = {{10,20}, {100,50}, {80,200}, {300,10}, {250,250}};
     double total = computeTotalDistance(pts);
     double avg = computeAvgDistance(pts);
-    QVERIFY(avg > 0);
-    QCOMPARE(avg, total / (pts.size() - 1));
+    EXPECT_TRUE(avg > 0);
+    EXPECT_EQ(avg, total / (pts.size() - 1));
 }
 
-void TestDistanceCalc::testMaxSingleStep() {
+TEST_F(TestDistanceCalc, testMaxSingleStep) {
     // Diagonal across 1920x1080 screen
     QList<QPair<int,int>> pts = {{0,0}, {1920,1080}};
     double expected = std::sqrt(1920.0*1920.0 + 1080.0*1080.0);
-    QCOMPARE(computeTotalDistance(pts), expected);
+    EXPECT_EQ(computeTotalDistance(pts), expected);
 }
 
 // ===== DB-backed: (0,0) filtering and coordinate edge cases =====
 
-void TestDistanceCalc::testFilterZeroZero() {
+TEST_F(TestDistanceCalc, testFilterZeroZero) {
     QTemporaryDir dir;
     QString path = dir.path() + "/dist_test.db";
     Config::instance().setDatabasePath(path);
@@ -163,16 +149,16 @@ void TestDistanceCalc::testFilterZeroZero() {
         pts.append({q.value(0).toInt(), q.value(1).toInt()});
     }
 
-    QCOMPARE(pts.size(), 2);
-    QCOMPARE(pts[0].first, 100);
-    QCOMPARE(pts[0].second, 200);
-    QCOMPARE(pts[1].first, 300);
-    QCOMPARE(pts[1].second, 400);
+    EXPECT_EQ(pts.size(), 2);
+    EXPECT_EQ(pts[0].first, 100);
+    EXPECT_EQ(pts[0].second, 200);
+    EXPECT_EQ(pts[1].first, 300);
+    EXPECT_EQ(pts[1].second, 400);
 
     Database::instance().close();
 }
 
-void TestDistanceCalc::testNegativeCoordinates() {
+TEST_F(TestDistanceCalc, testNegativeCoordinates) {
     QTemporaryDir dir;
     QString path = dir.path() + "/dist_neg.db";
     Config::instance().setDatabasePath(path);
@@ -194,14 +180,14 @@ void TestDistanceCalc::testNegativeCoordinates() {
     QList<QPair<int,int>> pts;
     while (q.next()) pts.append({q.value(0).toInt(), q.value(1).toInt()});
 
-    QCOMPARE(pts.size(), 2);
+    EXPECT_EQ(pts.size(), 2);
     // Distance from (-10,-20) to (-13,-24) = sqrt(9+16) = 5
-    QCOMPARE(computeTotalDistance(pts), 5.0);
+    EXPECT_EQ(computeTotalDistance(pts), 5.0);
 
     Database::instance().close();
 }
 
-void TestDistanceCalc::testLargeCoordinates() {
+TEST_F(TestDistanceCalc, testLargeCoordinates) {
     QTemporaryDir dir;
     QString path = dir.path() + "/dist_large.db";
     Config::instance().setDatabasePath(path);
@@ -223,13 +209,13 @@ void TestDistanceCalc::testLargeCoordinates() {
     QList<QPair<int,int>> pts;
     while (q.next()) pts.append({q.value(0).toInt(), q.value(1).toInt()});
 
-    QCOMPARE(pts.size(), 2);
-    QCOMPARE(computeTotalDistance(pts), 1000.0);  // pure horizontal
+    EXPECT_EQ(pts.size(), 2);
+    EXPECT_EQ(computeTotalDistance(pts), 1000.0);  // pure horizontal
 
     Database::instance().close();
 }
 
-void TestDistanceCalc::testMixedValidInvalid() {
+TEST_F(TestDistanceCalc, testMixedValidInvalid) {
     QTemporaryDir dir;
     QString path = dir.path() + "/dist_mixed.db";
     Config::instance().setDatabasePath(path);
@@ -256,12 +242,10 @@ void TestDistanceCalc::testMixedValidInvalid() {
     while (q.next()) pts.append({q.value(0).toInt(), q.value(1).toInt()});
 
     // Only 3 valid points
-    QCOMPARE(pts.size(), 3);
+    EXPECT_EQ(pts.size(), 3);
     // (10,10) -> (20,10) -> (30,10) => 10 + 10 = 20
-    QCOMPARE(computeTotalDistance(pts), 20.0);
+    EXPECT_EQ(computeTotalDistance(pts), 20.0);
 
     Database::instance().close();
 }
 
-QTEST_MAIN(TestDistanceCalc)
-#include "TestDistanceCalc.moc"

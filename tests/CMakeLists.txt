@@ -1,7 +1,7 @@
 # Unit Tests for Behavior SDK — storage / aggregator / queue / migrator
 #
-# 依赖：Qt5/6 (Test, Sql, Core) + behavior_sdk 静态库
-# 框架：QtTestLib（无外部依赖，与项目技术栈一致）
+# 依赖：Qt5/6 (Sql, Core) + GoogleTest + behavior_sdk 静态库
+# 框架：GoogleTest
 #
 # 用法：
 #   cmake -B build/test -S . -DBEHAVIOR_BUILD_TESTS=ON
@@ -10,12 +10,18 @@
 
 # --- Qt Test 模块 ---
 if(QT_VER EQUAL 6)
-    find_package(Qt6 REQUIRED COMPONENTS Test)
+    find_package(Qt6 REQUIRED COMPONENTS Test Sql Core)
 else()
-    find_package(Qt5 REQUIRED COMPONENTS Test)
+    find_package(Qt5 REQUIRED COMPONENTS Test Sql Core)
 endif()
 
-# --- GoogleTest 风格的 main 不需要，QtTest 自带 QTEST_MAIN ---
+# --- GoogleTest via FetchContent ---
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+)
+FetchContent_MakeAvailable(googletest)
 
 # 测试可执行文件列表
 set(BEHAVIOR_TESTS
@@ -38,10 +44,12 @@ foreach(TEST_NAME ${BEHAVIOR_TESTS})
     target_link_libraries(${TEST_NAME}
         PRIVATE
             behavior_sdk
+            GTest::gtest
             ${QT_PREFIX}::Test
             ${QT_PREFIX}::Sql
             ${QT_PREFIX}::Core
     )
+    target_sources(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test_main.cpp)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
@@ -104,6 +112,36 @@ target_link_libraries(check_dialog
 add_executable(query_dialog_today query_dialog_today.cpp)
 set_target_properties(query_dialog_today PROPERTIES AUTOMOC ON)
 target_link_libraries(query_dialog_today
+    PRIVATE
+        behavior_sdk
+        ${QT_PREFIX}::Sql
+        ${QT_PREFIX}::Core
+)
+
+# --- 压力测试 ---
+add_executable(stress_test stress_test.cpp)
+set_target_properties(stress_test PROPERTIES AUTOMOC ON)
+target_link_libraries(stress_test
+    PRIVATE
+        behavior_sdk
+        ${QT_PREFIX}::Sql
+        ${QT_PREFIX}::Core
+)
+
+# --- 异步清理器测试 ---
+add_executable(test_cleaner test_cleaner.cpp)
+set_target_properties(test_cleaner PROPERTIES AUTOMOC ON)
+target_link_libraries(test_cleaner
+    PRIVATE
+        behavior_sdk
+        ${QT_PREFIX}::Sql
+        ${QT_PREFIX}::Core
+)
+
+# --- 数据填充工具 ---
+add_executable(fill_data fill_data.cpp)
+set_target_properties(fill_data PROPERTIES AUTOMOC ON)
+target_link_libraries(fill_data
     PRIVATE
         behavior_sdk
         ${QT_PREFIX}::Sql

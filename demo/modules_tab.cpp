@@ -35,14 +35,7 @@ void ModulesTab::updateData(const QDateTime& start, const QDateTime& end) {
     QString endBucket = end.toString("yyyy-MM-dd");
     int rangeDays = start.date().daysTo(end.date()) + 1;
 
-    bool useAgg = false;
-    if (rangeDays > 90) {
-        QSqlQuery q0(sqlDb);
-        q0.exec("SELECT MIN(time_bucket), MAX(time_bucket) FROM agg_operation_stats WHERE length(time_bucket) = 10");
-        QString aggMinDay, aggMaxDay;
-        if (q0.next()) { aggMinDay = q0.value(0).toString(); aggMaxDay = q0.value(1).toString(); }
-        if (!aggMinDay.isEmpty() && startBucket >= aggMinDay && endBucket <= aggMaxDay) useAgg = true;
-    }
+    bool useAgg = (rangeDays > 7);
 
     QSqlQuery q(sqlDb);
     chart_->detachItems();
@@ -67,8 +60,9 @@ void ModulesTab::updateData(const QDateTime& start, const QDateTime& end) {
         chart->setSamples(modData);
         chart->attach(chart_);
         if (modData.size() == 1) chart_->setAxisScale(QwtPlot::xBottom, -0.5, 0.5, 1);
-        else chart_->setAxisScale(QwtPlot::xBottom, 0, modData.size() - 1, 1);
-        chart_->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(modData.begin(), modData.end()) * 1.2);
+        else chart_->setAxisScale(QwtPlot::xBottom, 0, modData.size() - 1, 1); {
+            chart_->setAxisScale(QwtPlot::yLeft, 0, *std::max_element(modData.begin(), modData.end()) * 1.2);
+        }
         chart_->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(modLabels));
         chart_->replot();
     }

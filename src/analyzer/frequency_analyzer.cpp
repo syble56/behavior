@@ -25,8 +25,9 @@ AnalysisResult FrequencyAnalyzer::analyze(const QList<Operation>& ops) {
 
     QVector<QPair<QString,int>> vec;
     vec.reserve(counts.size());
-    for (auto it = counts.begin(); it != counts.end(); ++it)
+    for (auto it = counts.begin(); it != counts.end(); ++it) {
         vec.append({it.key(), it.value()});
+    }
     std::sort(vec.begin(), vec.end(),
               [](const auto& a, const auto& b){ return a.second > b.second; });
 

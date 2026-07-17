@@ -32,8 +32,9 @@ AnalysisResult ModuleAnalyzer::analyze(const QList<Operation>& ops) {
     for (auto it = counts.begin(); it != counts.end(); ++it) total += it.value();
 
     QVector<QPair<QString,int>> vec;
-    for (auto it = counts.begin(); it != counts.end(); ++it)
+    for (auto it = counts.begin(); it != counts.end(); ++it) {
         vec.append({it.key(), it.value()});
+    }
     std::sort(vec.begin(), vec.end(),
               [](const auto& a, const auto& b){ return a.second > b.second; });
 

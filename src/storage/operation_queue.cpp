@@ -18,19 +18,22 @@ void OperationQueue::enqueue(Operation&& op) {
             queue_.append(std::move(op));
         }
     }
-    if (!drop)
+    if (!drop) {
         semaphore_.release();
+    }
 }
 
 QList<Operation> OperationQueue::dequeue(int maxCount) {
     QMutexLocker locker(&mutex_);
-    if (maxCount <= 0 || queue_.isEmpty())
+    if (maxCount <= 0 || queue_.isEmpty()) {
         return {};
+    }
     int n = qMin(maxCount, queue_.size());
     QList<Operation> out;
     out.reserve(n);
-    for (int i = 0; i < n; ++i)
+    for (int i = 0; i < n; ++i) {
         out.append(std::move(queue_[i]));
+    }
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     queue_.remove(0, n);
 #else

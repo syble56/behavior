@@ -1,5 +1,5 @@
 // TestAnalyzerOutput.cpp �?分析器输出结�?+ 值正确性验�?// P0: 验证 analyzeInput / analyzeDialog / analyzeFrequency / analyzeModule 返回�?QVariantMap
-#include <QtTest/QtTest>
+#include <gtest/gtest.h>
 #include <QTemporaryDir>
 #include <QDateTime>
 #include <QSqlQuery>
@@ -42,38 +42,26 @@ Operation makeOp(qint64 ts, EventType et = EventType::MouseClick,
 }
 } // namespace
 
-class TestAnalyzerOutput : public QObject {
-    Q_OBJECT
-private slots:
-    void init();
-    void cleanup();
+class TestAnalyzerOutput : public ::testing::Test {
+protected:
+    void SetUp() override;
+    void TearDown() override;
 
     // --- Input analyzer ---
-    void testInputAnalyzerStructure();
-    void testInputAnalyzerPercentages();
-    void testInputAnalyzerEmptyData();
 
     // --- Frequency analyzer ---
-    void testFrequencyAnalyzerTopActions();
-    void testFrequencyAnalyzerPercentages();
-    void testFrequencyAnalyzerActionKeyFallback();
 
     // --- Module analyzer ---
-    void testModuleAnalyzerExtractName();
-    void testModuleAnalyzerCounts();
 
     // --- Dialog analyzer ---
-    void testDialogAnalyzerStructure();
-    void testDialogAnalyzerDurationStats();
-    void testDialogAnalyzerInstantClose();
 
-private:
+protected:
     QTemporaryDir* dir_ = nullptr;
     QString path_;
     QDateTime baseTime_;
 };
 
-void TestAnalyzerOutput::init() {
+void TestAnalyzerOutput::SetUp() {
     dir_ = new QTemporaryDir;
     path_ = dir_->path() + "/analyzer_test.db";
     Config::instance().setDatabasePath(path_);
@@ -81,7 +69,7 @@ void TestAnalyzerOutput::init() {
     baseTime_ = QDateTime(QDate(2026, 7, 13), QTime(10, 0, 0));
 }
 
-void TestAnalyzerOutput::cleanup() {
+void TestAnalyzerOutput::TearDown() {
     Database::instance().close();
     delete dir_;
     dir_ = nullptr;
@@ -89,7 +77,7 @@ void TestAnalyzerOutput::cleanup() {
 
 // ===== Input Analyzer =====
 
-void TestAnalyzerOutput::testInputAnalyzerStructure() {
+TEST_F(TestAnalyzerOutput, testInputAnalyzerStructure) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       EventType::MouseClick, InputMethod::Mouse));
     Database::instance().insertOperation(makeOp(base + 100, EventType::MouseClick, InputMethod::Mouse));
@@ -101,23 +89,23 @@ void TestAnalyzerOutput::testInputAnalyzerStructure() {
     QDateTime end = baseTime_.addSecs(3600);
     AnalysisResult r = analyzer->analyzeInput(start, end);
 
-    QVERIFY(r.success);
-    QVERIFY(r.data.contains("total"));
-    QVERIFY(r.data.contains("mouse"));
-    QVERIFY(r.data.contains("touch"));
-    QVERIFY(r.data.contains("keyboard"));
-    QVERIFY(r.data.contains("scroll"));
-    QVERIFY(r.data.contains("knob"));
+    EXPECT_TRUE(r.success);
+    EXPECT_TRUE(r.data.contains("total"));
+    EXPECT_TRUE(r.data.contains("mouse"));
+    EXPECT_TRUE(r.data.contains("touch"));
+    EXPECT_TRUE(r.data.contains("keyboard"));
+    EXPECT_TRUE(r.data.contains("scroll"));
+    EXPECT_TRUE(r.data.contains("knob"));
 
-    QCOMPARE(r.data["total"].toInt(), 4);
+    EXPECT_EQ(r.data["total"].toInt(), 4);
 
     auto mouse = r.data["mouse"].toMap();
-    QVERIFY(mouse.contains("count"));
-    QVERIFY(mouse.contains("percentage"));
-    QCOMPARE(mouse["count"].toInt(), 2);
+    EXPECT_TRUE(mouse.contains("count"));
+    EXPECT_TRUE(mouse.contains("percentage"));
+    EXPECT_EQ(mouse["count"].toInt(), 2);
 }
 
-void TestAnalyzerOutput::testInputAnalyzerPercentages() {
+TEST_F(TestAnalyzerOutput, testInputAnalyzerPercentages) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // 2 mouse + 1 keyboard + 1 touch = 4 total
     Database::instance().insertOperation(makeOp(base,       EventType::MouseClick, InputMethod::Mouse));
@@ -130,45 +118,47 @@ void TestAnalyzerOutput::testInputAnalyzerPercentages() {
     QDateTime end = baseTime_.addSecs(3600);
     AnalysisResult r = analyzer->analyzeInput(start, end);
 
-    QVERIFY(r.success);
-    QCOMPARE(r.data["total"].toInt(), 4);
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.data["total"].toInt(), 4);
 
     auto mouse = r.data["mouse"].toMap();
-    QCOMPARE(mouse["count"].toInt(), 2);
-    QCOMPARE(mouse["percentage"].toDouble(), 50.0);
+    EXPECT_EQ(mouse["count"].toInt(), 2);
+    EXPECT_EQ(mouse["percentage"].toDouble(), 50.0);
 
     auto keyboard = r.data["keyboard"].toMap();
-    QCOMPARE(keyboard["count"].toInt(), 1);
-    QCOMPARE(keyboard["percentage"].toDouble(), 25.0);
+    EXPECT_EQ(keyboard["count"].toInt(), 1);
+    EXPECT_EQ(keyboard["percentage"].toDouble(), 25.0);
 
     auto touch = r.data["touch"].toMap();
-    QCOMPARE(touch["count"].toInt(), 1);
-    QCOMPARE(touch["percentage"].toDouble(), 25.0);
+    EXPECT_EQ(touch["count"].toInt(), 1);
+    EXPECT_EQ(touch["percentage"].toDouble(), 25.0);
 
     auto scroll = r.data["scroll"].toMap();
-    QCOMPARE(scroll["count"].toInt(), 0);
-    QCOMPARE(scroll["percentage"].toDouble(), 0.0);
+    EXPECT_EQ(scroll["count"].toInt(), 0);
+    EXPECT_EQ(scroll["percentage"].toDouble(), 0.0);
 }
 
-void TestAnalyzerOutput::testInputAnalyzerEmptyData() {
+TEST_F(TestAnalyzerOutput, testInputAnalyzerEmptyData) {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     QDateTime start = baseTime_;
     QDateTime end = baseTime_.addSecs(3600);
     AnalysisResult r = analyzer->analyzeInput(start, end);
 
-    QVERIFY(!r.success);
-    QVERIFY(!r.error.isEmpty());
+    EXPECT_TRUE(!r.success);
+    EXPECT_TRUE(!r.error.isEmpty());
 }
 
 // ===== Frequency Analyzer =====
 
-void TestAnalyzerOutput::testFrequencyAnalyzerTopActions() {
+TEST_F(TestAnalyzerOutput, testFrequencyAnalyzerTopActions) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // "save" x3, "open" x2, "close" x1
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         Database::instance().insertOperation(makeOp(base + i*100, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "save"));
-    for (int i = 0; i < 2; ++i)
+    }
+    for (int i = 0; i < 2; ++i) {
         Database::instance().insertOperation(makeOp(base + 300 + i*100, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "open"));
+    }
     Database::instance().insertOperation(makeOp(base + 500, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "close"));
 
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
@@ -176,35 +166,36 @@ void TestAnalyzerOutput::testFrequencyAnalyzerTopActions() {
     QDateTime end = baseTime_.addSecs(3600);
     AnalysisResult r = analyzer->analyzeFrequency(start, end);
 
-    QVERIFY(r.success);
-    QCOMPARE(r.data["total_operations"].toInt(), 6);
-    QCOMPARE(r.data["unique_actions"].toInt(), 3);
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.data["total_operations"].toInt(), 6);
+    EXPECT_EQ(r.data["unique_actions"].toInt(), 3);
 
     auto top = r.data["top_actions"].toList();
-    QVERIFY(!top.isEmpty());
+    EXPECT_TRUE(!top.isEmpty());
     auto first = top[0].toMap();
-    QCOMPARE(first["action"].toString(), QString("save"));
-    QCOMPARE(first["count"].toInt(), 3);
+    EXPECT_EQ(first["action"].toString(), QString("save"));
+    EXPECT_EQ(first["count"].toInt(), 3);
 }
 
-void TestAnalyzerOutput::testFrequencyAnalyzerPercentages() {
+TEST_F(TestAnalyzerOutput, testFrequencyAnalyzerPercentages) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 4; ++i) {
         Database::instance().insertOperation(makeOp(base + i*100, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "actionA"));
+    }
     Database::instance().insertOperation(makeOp(base + 400, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "actionB"));
 
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeFrequency(baseTime_, baseTime_.addSecs(3600));
 
-    QVERIFY(r.success);
+    EXPECT_TRUE(r.success);
     auto top = r.data["top_actions"].toList();
     auto first = top[0].toMap();
-    QCOMPARE(first["action"].toString(), QString("actionA"));
-    QCOMPARE(first["count"].toInt(), 4);
-    QCOMPARE(first["percentage"].toDouble(), 80.0);  // 4/5 * 100
+    EXPECT_EQ(first["action"].toString(), QString("actionA"));
+    EXPECT_EQ(first["count"].toInt(), 4);
+    EXPECT_EQ(first["percentage"].toDouble(), 80.0);  // 4/5 * 100
 }
 
-void TestAnalyzerOutput::testFrequencyAnalyzerActionKeyFallback() {
+TEST_F(TestAnalyzerOutput, testFrequencyAnalyzerActionKeyFallback) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // No actionName, should fall back to controlName
     Database::instance().insertOperation(makeOp(base, EventType::MouseClick, InputMethod::Mouse, "MainWindow", true, "", "btnSave"));
@@ -213,16 +204,16 @@ void TestAnalyzerOutput::testFrequencyAnalyzerActionKeyFallback() {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeFrequency(baseTime_, baseTime_.addSecs(3600));
 
-    QVERIFY(r.success);
+    EXPECT_TRUE(r.success);
     auto top = r.data["top_actions"].toList();
-    QVERIFY(!top.isEmpty());
-    QCOMPARE(top[0].toMap()["action"].toString(), QString("btnSave"));
-    QCOMPARE(top[0].toMap()["count"].toInt(), 2);
+    EXPECT_TRUE(!top.isEmpty());
+    EXPECT_EQ(top[0].toMap()["action"].toString(), QString("btnSave"));
+    EXPECT_EQ(top[0].toMap()["count"].toInt(), 2);
 }
 
 // ===== Module Analyzer =====
 
-void TestAnalyzerOutput::testModuleAnalyzerExtractName() {
+TEST_F(TestAnalyzerOutput, testModuleAnalyzerExtractName) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // "QMainWindow" -> "Main", "SettingsDialog" -> "Settings"
     Database::instance().insertOperation(makeOp(base,       EventType::MouseClick, InputMethod::Mouse, "QMainWindow"));
@@ -231,18 +222,18 @@ void TestAnalyzerOutput::testModuleAnalyzerExtractName() {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeModule(baseTime_, baseTime_.addSecs(3600));
 
-    QVERIFY(r.success);
+    EXPECT_TRUE(r.success);
     auto modules = r.data["modules"].toList();
-    QVERIFY(modules.size() >= 2);
+    EXPECT_TRUE(modules.size() >= 2);
 
     // Find "Main" and "Settings" in the results
     QStringList names;
     for (const auto& v : modules) names << v.toMap()["module"].toString();
-    QVERIFY(names.contains("Main"));
-    QVERIFY(names.contains("Settings"));
+    EXPECT_TRUE(names.contains("Main"));
+    EXPECT_TRUE(names.contains("Settings"));
 }
 
-void TestAnalyzerOutput::testModuleAnalyzerCounts() {
+TEST_F(TestAnalyzerOutput, testModuleAnalyzerCounts) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Database::instance().insertOperation(makeOp(base,       EventType::MouseClick, InputMethod::Mouse, "QMainWindow"));
     Database::instance().insertOperation(makeOp(base + 100, EventType::MouseClick, InputMethod::Mouse, "QMainWindow"));
@@ -251,19 +242,19 @@ void TestAnalyzerOutput::testModuleAnalyzerCounts() {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeModule(baseTime_, baseTime_.addSecs(3600));
 
-    QVERIFY(r.success);
-    QCOMPARE(r.data["total_modules"].toInt(), 2);
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.data["total_modules"].toInt(), 2);
 
     auto modules = r.data["modules"].toList();
     auto first = modules[0].toMap();
-    QCOMPARE(first["module"].toString(), QString("Main"));
-    QCOMPARE(first["count"].toInt(), 2);
-    QCOMPARE(first["percentage"].toDouble(), (100.0 * 2 / 3));
+    EXPECT_EQ(first["module"].toString(), QString("Main"));
+    EXPECT_EQ(first["count"].toInt(), 2);
+    EXPECT_EQ(first["percentage"].toDouble(), (100.0 * 2 / 3));
 }
 
 // ===== Dialog Analyzer =====
 
-void TestAnalyzerOutput::testDialogAnalyzerStructure() {
+TEST_F(TestAnalyzerOutput, testDialogAnalyzerStructure) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     Operation open = makeOp(base, EventType::DialogOpen, InputMethod::Derived, "SettingsDialog");
     open.windowTitle = "Settings";
@@ -276,23 +267,23 @@ void TestAnalyzerOutput::testDialogAnalyzerStructure() {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeDialog(baseTime_, baseTime_.addSecs(3600));
 
-    QVERIFY(r.success);
-    QVERIFY(r.data.contains("total_opens"));
-    QVERIFY(r.data.contains("dialogs"));
-    QCOMPARE(r.data["total_opens"].toInt(), 1);
+    EXPECT_TRUE(r.success);
+    EXPECT_TRUE(r.data.contains("total_opens"));
+    EXPECT_TRUE(r.data.contains("dialogs"));
+    EXPECT_EQ(r.data["total_opens"].toInt(), 1);
 
     auto dialogs = r.data["dialogs"].toList();
-    QVERIFY(!dialogs.isEmpty());
+    EXPECT_TRUE(!dialogs.isEmpty());
     auto d = dialogs[0].toMap();
-    QVERIFY(d.contains("class"));
-    QVERIFY(d.contains("open_count"));
-    QVERIFY(d.contains("close_count"));
-    QVERIFY(d.contains("avg_duration_ms"));
-    QVERIFY(d.contains("median_duration_ms"));
-    QVERIFY(d.contains("instant_close_rate"));
+    EXPECT_TRUE(d.contains("class"));
+    EXPECT_TRUE(d.contains("open_count"));
+    EXPECT_TRUE(d.contains("close_count"));
+    EXPECT_TRUE(d.contains("avg_duration_ms"));
+    EXPECT_TRUE(d.contains("median_duration_ms"));
+    EXPECT_TRUE(d.contains("instant_close_rate"));
 }
 
-void TestAnalyzerOutput::testDialogAnalyzerDurationStats() {
+TEST_F(TestAnalyzerOutput, testDialogAnalyzerDurationStats) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // Open + close with 3000ms duration
     {
@@ -318,20 +309,20 @@ void TestAnalyzerOutput::testDialogAnalyzerDurationStats() {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeDialog(baseTime_, baseTime_.addSecs(36000));
 
-    QVERIFY(r.success);
-    QCOMPARE(r.data["total_opens"].toInt(), 2);
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.data["total_opens"].toInt(), 2);
     auto dialogs = r.data["dialogs"].toList();
-    QCOMPARE(dialogs.size(), 1);
+    EXPECT_EQ(dialogs.size(), 1);
     auto d = dialogs[0].toMap();
-    QCOMPARE(d["open_count"].toInt(), 2);
-    QCOMPARE(d["close_count"].toInt(), 2);
-    QCOMPARE(d["avg_duration_ms"].toInt(), 2000);  // (3000+1000)/2
-    QCOMPARE(d["min_duration_ms"].toInt(), 1000);
-    QCOMPARE(d["max_duration_ms"].toInt(), 3000);
-    QCOMPARE(d["median_duration_ms"].toInt(), 2000);  // median of [1000, 3000]
+    EXPECT_EQ(d["open_count"].toInt(), 2);
+    EXPECT_EQ(d["close_count"].toInt(), 2);
+    EXPECT_EQ(d["avg_duration_ms"].toInt(), 2000);  // (3000+1000)/2
+    EXPECT_EQ(d["min_duration_ms"].toInt(), 1000);
+    EXPECT_EQ(d["max_duration_ms"].toInt(), 3000);
+    EXPECT_EQ(d["median_duration_ms"].toInt(), 2000);  // median of [1000, 3000]
 }
 
-void TestAnalyzerOutput::testDialogAnalyzerInstantClose() {
+TEST_F(TestAnalyzerOutput, testDialogAnalyzerInstantClose) {
     qint64 base = baseTime_.toMSecsSinceEpoch();
     // Instant close (< 500ms)
     {
@@ -357,13 +348,11 @@ void TestAnalyzerOutput::testDialogAnalyzerInstantClose() {
     auto analyzer = std::unique_ptr<BehaviorAnalyzer>(makeAnalyzer());
     AnalysisResult r = analyzer->analyzeDialog(baseTime_, baseTime_.addSecs(36000));
 
-    QVERIFY(r.success);
+    EXPECT_TRUE(r.success);
     auto dialogs = r.data["dialogs"].toList();
-    QCOMPARE(dialogs.size(), 1);
+    EXPECT_EQ(dialogs.size(), 1);
     auto d = dialogs[0].toMap();
     // 1 out of 2 closes was instant (< 500ms) => 50.0%
-    QCOMPARE(d["instant_close_rate"].toString(), QString("50.0%"));
+    EXPECT_EQ(d["instant_close_rate"].toString(), QString("50.0%"));
 }
 
-QTEST_MAIN(TestAnalyzerOutput)
-#include "TestAnalyzerOutput.moc"

@@ -29,17 +29,20 @@ ActionScaleDraw::ActionScaleDraw(const QStringList& labels)
 
 QwtText ActionScaleDraw::label(double value) const {
     int idx = static_cast<int>(value + 0.5);
-    if (idx < 0 || idx >= labels_.size())
+    if (idx < 0 || idx >= labels_.size()) {
         return QwtText();
+    }
 
     QString name = labels_[idx];
     if (isDateFormat_) {
         QStringList parts = name.split('-');
-        if (parts.size() == 3)
+        if (parts.size() == 3) {
             name = parts[1] + "-" + parts[2];
+        }
     } else {
-        if (name.length() > 8)
+        if (name.length() > 8) {
             name = name.left(6) + "..";
+        }
     }
     return QwtText(name, QwtText::PlainText);
 }
@@ -103,8 +106,8 @@ void PieChartWidget::paintEvent(QPaintEvent*) {
     p.setRenderHint(QPainter::Antialiasing);
 
     int w = width(), h = height();
-    int side = qMin(w, h) - 40;
-    int cx = w / 2, cy = h / 2;
+    int side = qMin(qMin(w, h) - 40, 280);  // 限制最大直径 280px
+    int cx = w / 2 - 60, cy = h / 2;  // 稍微左移给图例留空间
     int radius = side / 2;
 
     double total = 0;

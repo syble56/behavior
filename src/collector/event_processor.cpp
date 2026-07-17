@@ -151,33 +151,54 @@ void EventProcessor::recoverUnclosedDialogs() {
     if (!sqlDb.isOpen()) return;
 
     QSqlQuery q(sqlDb);
-    q.prepare(
-        "SELECT id, session_id, time, window_class, window_title, window_path, module "
-        "FROM operations WHERE event_type = 'dialog_open' "
-        "AND id NOT IN ("
-        "  SELECT o2.id FROM operations o1 "
-        "  JOIN operations o2 ON o2.event_type = 'dialog_close' "
-        "    AND o2.window_class = o1.window_class "
-        "    AND COALESCE(o2.module,'') = COALESCE(o1.module,'') "
-        "    AND o2.time > o1.time "
-        "  WHERE o1.event_type = 'dialog_open'"
-        ") ORDER BY time");
+    // 1. 先取最近 20 条 dialog_open（走 idx_ops_event 索引，秒级）
+    q.prepare("SELECT id, session_id, time, window_class, window_title, window_path, module "
+              "FROM operations WHERE event_type = 'dialog_open' ORDER BY time DESC LIMIT 20");
     q.exec();
 
+    struct OpenDialog {
+        qint64 id;
+        QString sessionId;
+        qint64 openTime;
+        QString windowClass;
+        QString windowTitle;
+        QString windowPath;
+        QString module;
+    };
+    QVector<OpenDialog> candidates;
+    while (q.next()) {
+        candidates.append({
+            q.value(0).toLongLong(), q.value(1).toString(), q.value(2).toLongLong(),
+            q.value(3).toString(), q.value(4).toString(), q.value(5).toString(), q.value(6).toString()
+        });
+    }
+
+    if (candidates.isEmpty()) return;
+
+    // 2. 逐条检查是否有对应的 dialog_close
     qint64 now = QDateTime::currentDateTime().toMSecsSinceEpoch();
     int recovered = 0;
-    while (q.next()) {
+    for (const auto& dlg : candidates) {
+        QSqlQuery q2(sqlDb);
+        q2.prepare("SELECT 1 FROM operations WHERE event_type = 'dialog_close' "
+                   "AND window_class = ? AND COALESCE(module,'') = COALESCE(?,'') AND time > ? LIMIT 1");
+        q2.addBindValue(dlg.windowClass);
+        q2.addBindValue(dlg.module);
+        q2.addBindValue(dlg.openTime);
+        q2.exec();
+        if (q2.next()) continue;  // 已关闭，跳过
+
+        // 未关闭，生成补丁 close 事件
         Operation op;
-        op.sessionId = q.value(1).toString();
+        op.sessionId = dlg.sessionId;
         op.timestamp = now;
         op.eventType = EventType::DialogClose;
         op.inputMethod = InputMethod::Derived;
-        op.windowClass = q.value(3).toString();
-        op.windowTitle = q.value(4).toString();
-        op.windowPath = q.value(5).toString();
-        op.module = q.value(6).toString();
-        qint64 openTime = q.value(2).toLongLong();
-        int dur = static_cast<int>(now - openTime);
+        op.windowClass = dlg.windowClass;
+        op.windowTitle = dlg.windowTitle;
+        op.windowPath = dlg.windowPath;
+        op.module = dlg.module;
+        int dur = static_cast<int>(now - dlg.openTime);
         if (dur > 0) op.duration = dur;
         enqueue(std::move(op));
         ++recovered;
@@ -195,9 +216,13 @@ void EventProcessor::processKeyPress(QWidget* target, QKeyEvent* event) {
     Operation op = createOperation(target, EventType::Shortcut, InputMethod::Keyboard);
     op.keySequence = QKeySequence(key).toString();
     // 标记动作名
-    if (key == Qt::Key_Escape)         op.actionName = "escape";
-    else if (key == Qt::Key_Return)    op.actionName = "enter";
-    else if (key == Qt::Key_Enter)     op.actionName = "enter";
+    if (key == Qt::Key_Escape) {
+        op.actionName = "escape";
+    } else if (key == Qt::Key_Return) {
+        op.actionName = "enter";
+    } else if (key == Qt::Key_Enter) {
+        op.actionName = "enter";
+    }
     enqueue(std::move(op));
 
     QString log = QString("[%1] KeyPress: %2")

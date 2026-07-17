@@ -18,6 +18,7 @@
 #include <QSqlQuery>
 #include <QSqlDatabase>
 #include <QDebug>
+#include <QComboBox>
 
 using namespace ui_shared::behavior;
 
@@ -56,6 +57,27 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
             padding: 5px 10px; color: #FFFFFF; font-size: 13px;
         }
         QDateTimeEdit:focus { border-color: #3B82F6; }
+        QDateTimeEdit::drop-down { border: none; width: 20px; }
+        QDateTimeEdit::down-arrow {
+            image: none; border-left: 4px solid transparent; border-right: 4px solid transparent;
+            border-top: 5px solid #94A3B8; width: 0; height: 0; margin-right: 6px;
+        }
+        QCalendarWidget {
+            background-color: #32353A; color: #E2E8F0; border: 1px solid #4A4D52;
+        }
+        QCalendarWidget QToolButton {
+            background-color: #3C3F44; color: #E2E8F0; border: none; border-radius: 4px;
+            padding: 4px 8px; font-size: 13px; font-weight: 600;
+        }
+        QCalendarWidget QToolButton:hover { background-color: #4A4D52; }
+        QCalendarWidget QMenu { background-color: #3C3F44; color: #E2E8F0; border: 1px solid #4A4D52; }
+        QCalendarWidget QMenu::item:selected { background-color: #2563EB; }
+        QCalendarWidget QAbstractItemView {
+            background-color: #32353A; color: #E2E8F0; selection-background-color: #2563EB;
+            selection-color: #FFFFFF; alternate-background-color: #34373C; border: none;
+        }
+        QCalendarWidget QAbstractItemView:enabled { color: #E2E8F0; }
+        QCalendarWidget QAbstractItemView:disabled { color: #4A4D52; }
         QTabWidget::pane {
             border: 1px solid #4A4D52; background-color: #3C3F44; border-radius: 8px; top: -1px;
         }
@@ -102,32 +124,38 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
     auto* timeLay = new QHBoxLayout(timeGroup);
     timeLay->setSpacing(8);
 
-    timeLay->addWidget(new QLabel("Start:", this));
+    timeLay->addWidget(new QLabel("Range:", this));
+    auto* rangeCombo = new QComboBox(this);
+    rangeCombo->setMinimumWidth(120);
+    rangeCombo->addItems({"Today", "Last 1 Week", "Last 1 Month", "Last 6 Months", "Custom"});
+    rangeCombo->setCurrentIndex(1);  // Last 1 Week
+    timeLay->addWidget(rangeCombo);
+
+    timeLay->addSpacing(8);
+
+    auto* startLabel = new QLabel("Start:", this);
     startDate_ = new QDateEdit(this);
     startDate_->setCalendarPopup(true);
-    startDate_->setDate(QDate::currentDate().addDays(-7));
+    startDate_->setDate(QDate::currentDate().addDays(-6));  // Last 1 Week
     startDate_->setDisplayFormat("yyyy-MM-dd");
-    timeLay->addWidget(startDate_);
 
-    timeLay->addSpacing(12);
-    timeLay->addWidget(new QLabel("End:", this));
+    auto* endLabel = new QLabel("End:", this);
     endDate_ = new QDateEdit(this);
     endDate_->setCalendarPopup(true);
     endDate_->setDate(QDate::currentDate());
     endDate_->setDisplayFormat("yyyy-MM-dd");
+
+    // 默认隐藏日期选择器（预设模式）
+    startLabel->hide();
+    startDate_->hide();
+    endLabel->hide();
+    endDate_->hide();
+
+    timeLay->addWidget(startLabel);
+    timeLay->addWidget(startDate_);
+    timeLay->addSpacing(12);
+    timeLay->addWidget(endLabel);
     timeLay->addWidget(endDate_);
-
-    timeLay->addSpacing(16);
-
-    auto* btnToday = new QPushButton("Today", this);
-    auto* btnLast3Days = new QPushButton("Last 3 Days", this);
-    auto* btnLastWeek = new QPushButton("Last 7 Days", this);
-    auto* btnLastMonth = new QPushButton("Last 30 Days", this);
-    timeLay->addWidget(btnToday);
-    timeLay->addWidget(btnLast3Days);
-    timeLay->addWidget(btnLastWeek);
-    timeLay->addWidget(btnLastMonth);
-
     timeLay->addSpacing(8);
 
     auto* btnAnalyze = new QPushButton("Analyze", this);
@@ -203,22 +231,28 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
     lay->addWidget(tabWidget_);
 
     // --- Signals ---
-    connect(btnToday, &QPushButton::clicked, this, [this]{
-        endDate_->setDate(QDate::currentDate());
-        startDate_->setDate(QDate::currentDate());
-    });
-    connect(btnLast3Days, &QPushButton::clicked, this, [this]{
-        endDate_->setDate(QDate::currentDate());
-        startDate_->setDate(QDate::currentDate().addDays(-2));
-    });
-    connect(btnLastWeek, &QPushButton::clicked, this, [this]{
-        endDate_->setDate(QDate::currentDate());
-        startDate_->setDate(QDate::currentDate().addDays(-6));
-    });
-    connect(btnLastMonth, &QPushButton::clicked, this, [this]{
-        endDate_->setDate(QDate::currentDate());
-        startDate_->setDate(QDate::currentDate().addDays(-29));
-    });
+    auto applyPreset = [this](int index) {
+        QDate today = QDate::currentDate();
+        switch (index) {
+            case 0: endDate_->setDate(today); startDate_->setDate(today); break;             // Today
+            case 1: endDate_->setDate(today); startDate_->setDate(today.addDays(-6)); break; // Last 1 Week
+            case 2: endDate_->setDate(today); startDate_->setDate(today.addDays(-29)); break;// Last 1 Month
+            case 3: endDate_->setDate(today); startDate_->setDate(today.addDays(-179)); break;// Last 6 Months
+            // case 4: Custom — 不改日期，用户手动选
+        }
+    };
+    connect(rangeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+        [this, applyPreset, startLabel, endLabel, rangeCombo](int index) {
+            bool isCustom = (index == 4);
+            startLabel->setVisible(isCustom);
+            startDate_->setVisible(isCustom);
+            endLabel->setVisible(isCustom);
+            endDate_->setVisible(isCustom);
+            if (!isCustom) {
+                applyPreset(index);
+                onAnalyze();
+            }
+        });
     connect(btnAnalyze, &QPushButton::clicked, this, &AnalysisDialog::onAnalyze);
 
     QTimer::singleShot(100, this, &AnalysisDialog::onAnalyze);
@@ -239,9 +273,10 @@ void AnalysisDialog::onAnalyze() {
 
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
+    int rangeDays = start.date().daysTo(end.date()) + 1;
 
-    // --- Debug info in title ---
     QSqlQuery q(sqlDb);
+
     q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ?");
     q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
     int countInRange = 0;
@@ -259,14 +294,34 @@ void AnalysisDialog::onAnalyze() {
         .arg(countInRange).arg(totalOps).arg(aggCount));
 
     // --- Summary cards ---
-    q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
-              "FROM operations WHERE time >= ? AND time < ?");
-    q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+    bool useAggSummary = (rangeDays > 7);
+    
+    if (useAggSummary) {
+        q.prepare("SELECT SUM(count) FROM agg_time_distribution WHERE date >= ? AND date <= ?");
+        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
+    } else {
+        q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
+                  "FROM operations WHERE time >= ? AND time < ?");
+        q.addBindValue(startMs); q.addBindValue(endMs);
+    }
+    q.exec();
     int activeDays = 0;
-    if (q.next()) activeDays = q.value(0).toInt();
+    if (q.next()) activeDays = useAggSummary ? q.value(0).toInt() : q.value(0).toInt();
+    if (useAggSummary) {
+        q.prepare("SELECT COUNT(DISTINCT date) FROM agg_time_distribution WHERE date >= ? AND date <= ?");
+        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
+        q.exec();
+        if (q.next()) activeDays = q.value(0).toInt();
+    }
 
-    q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
-    q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+    if (useAggSummary) {
+        q.prepare("SELECT SUM(open_count) FROM agg_dialog_stats WHERE time_bucket >= ? AND time_bucket <= ?");
+        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
+    } else {
+        q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
+        q.addBindValue(startMs); q.addBindValue(endMs);
+    }
+    q.exec();
     int dlgCount = 0;
     if (q.next()) dlgCount = q.value(0).toInt();
 
