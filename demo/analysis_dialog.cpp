@@ -1,4 +1,5 @@
-#include "analysis_dialog.h"
+﻿#include "analysis_dialog.h"
+#include "date_picker/date_field.h"
 #include "operations_tab.h"
 #include "modules_tab.h"
 #include "input_tab.h"
@@ -62,6 +63,11 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
             image: none; border-left: 4px solid transparent; border-right: 4px solid transparent;
             border-top: 5px solid #94A3B8; width: 0; height: 0; margin-right: 6px;
         }
+        QLabel#dateField {
+            background-color: #3C3F44; border: 1px solid #4A4D52; border-radius: 6px;
+            padding: 5px 10px; color: #FFFFFF; font-size: 13px;
+        }
+        QLabel#dateField:hover { border-color: #3B82F6; }
         QCalendarWidget {
             background-color: #32353A; color: #E2E8F0; border: 1px solid #4A4D52;
         }
@@ -134,16 +140,16 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
     timeLay->addSpacing(8);
 
     auto* startLabel = new QLabel("Start:", this);
-    startDate_ = new QDateEdit(this);
-    startDate_->setCalendarPopup(true);
+    startDate_ = new DateField(this);
     startDate_->setDate(QDate::currentDate().addDays(-6));  // Last 1 Week
     startDate_->setDisplayFormat("yyyy-MM-dd");
+    startDate_->setLanguage(DateField::English);
 
     auto* endLabel = new QLabel("End:", this);
-    endDate_ = new QDateEdit(this);
-    endDate_->setCalendarPopup(true);
+    endDate_ = new DateField(this);
     endDate_->setDate(QDate::currentDate());
     endDate_->setDisplayFormat("yyyy-MM-dd");
+    endDate_->setLanguage(DateField::English);
 
     // 默认隐藏日期选择器（预设模式）
     startLabel->hide();
@@ -296,34 +302,47 @@ void AnalysisDialog::onAnalyze() {
     // --- Summary cards ---
     bool useAggSummary = (rangeDays > 7);
     
-    if (useAggSummary) {
-        q.prepare("SELECT SUM(count) FROM agg_time_distribution WHERE date >= ? AND date <= ?");
-        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
-    } else {
-        q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
-                  "FROM operations WHERE time >= ? AND time < ?");
-        q.addBindValue(startMs); q.addBindValue(endMs);
-    }
-    q.exec();
     int activeDays = 0;
-    if (q.next()) activeDays = useAggSummary ? q.value(0).toInt() : q.value(0).toInt();
     if (useAggSummary) {
         q.prepare("SELECT COUNT(DISTINCT date) FROM agg_time_distribution WHERE date >= ? AND date <= ?");
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
         q.exec();
         if (q.next()) activeDays = q.value(0).toInt();
+        // fallback to raw data
+        if (activeDays == 0) {
+            q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
+                      "FROM operations WHERE time >= ? AND time < ?");
+            q.addBindValue(startMs); q.addBindValue(endMs);
+            q.exec();
+            if (q.next()) activeDays = q.value(0).toInt();
+        }
+    } else {
+        q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
+                  "FROM operations WHERE time >= ? AND time < ?");
+        q.addBindValue(startMs); q.addBindValue(endMs);
+        q.exec();
+        if (q.next()) activeDays = q.value(0).toInt();
     }
 
+    int dlgCount = 0;
     if (useAggSummary) {
         q.prepare("SELECT SUM(open_count) FROM agg_dialog_stats WHERE time_bucket >= ? AND time_bucket <= ?");
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
+        q.exec();
+        if (q.next()) dlgCount = q.value(0).toInt();
+        // fallback to raw data
+        if (dlgCount == 0) {
+            q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
+            q.addBindValue(startMs); q.addBindValue(endMs);
+            q.exec();
+            if (q.next()) dlgCount = q.value(0).toInt();
+        }
     } else {
         q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
         q.addBindValue(startMs); q.addBindValue(endMs);
+        q.exec();
+        if (q.next()) dlgCount = q.value(0).toInt();
     }
-    q.exec();
-    int dlgCount = 0;
-    if (q.next()) dlgCount = q.value(0).toInt();
 
     statCards_[0]->setText(QString(
         "<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Total Events</span></td></tr>"

@@ -1,10 +1,10 @@
-#pragma once
+﻿#pragma once
 
 #include <QDialog>
-#include <QDateEdit>
 #include <QTabWidget>
 #include <QLabel>
 
+class DateField;
 class OperationsTab;
 class ModulesTab;
 class InputTab;
@@ -22,8 +22,8 @@ private slots:
     void onAnalyze();
 
 private:
-    QDateEdit* startDate_ = nullptr;
-    QDateEdit* endDate_ = nullptr;
+    DateField* startDate_ = nullptr;
+    DateField* endDate_ = nullptr;
     QTabWidget* tabWidget_ = nullptr;
     QList<QLabel*> statCards_;
 

@@ -1,4 +1,4 @@
-# Unit Tests for Behavior SDK — storage / aggregator / queue / migrator
+﻿# Unit Tests for Behavior SDK — storage / aggregator / queue / migrator
 #
 # 依赖：Qt5/6 (Sql, Core) + GoogleTest + behavior_sdk 静态库
 # 框架：GoogleTest
@@ -36,6 +36,10 @@ set(BEHAVIOR_TESTS
     TestCoordBoundary
     TestTimezone
     TestAggPrecision
+    TestAnalyzers
+    TestCore
+    TestEventProcessor
+    TestCalendarPicker
 )
 
 foreach(TEST_NAME ${BEHAVIOR_TESTS})
@@ -48,8 +52,15 @@ foreach(TEST_NAME ${BEHAVIOR_TESTS})
             ${QT_PREFIX}::Test
             ${QT_PREFIX}::Sql
             ${QT_PREFIX}::Core
+            ${QT_PREFIX}::Widgets
     )
-    target_sources(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test_main.cpp)
+    target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/demo ${CMAKE_SOURCE_DIR}/demo/date_picker)
+    target_sources(${TEST_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_main.cpp
+        ${CMAKE_SOURCE_DIR}/demo/date_picker/calendar_picker.cpp
+        ${CMAKE_SOURCE_DIR}/demo/date_picker/dropdown_popup.cpp
+        ${CMAKE_SOURCE_DIR}/demo/date_picker/date_field.cpp
+    )
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 

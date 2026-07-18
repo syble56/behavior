@@ -11,6 +11,9 @@ set(DEMO_SOURCES
     heatmap_tab.cpp
     dialog_tab.cpp
     distance_tab.cpp
+    date_picker/date_field.cpp
+    date_picker/calendar_picker.cpp
+    date_picker/dropdown_popup.cpp
 )
 set(DEMO_MOC_HEADERS
     mainwindow.h
@@ -24,6 +27,9 @@ set(DEMO_MOC_HEADERS
     heatmap_tab.h
     dialog_tab.h
     distance_tab.h
+    date_picker/date_field.h
+    date_picker/calendar_picker.h
+    date_picker/dropdown_popup.h
 )
 
 if(QT_VER EQUAL 6)

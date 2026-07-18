@@ -1,4 +1,4 @@
-#include "time_tab.h"
+﻿#include "time_tab.h"
 #include "chart_widgets.h"
 #include "storage/database.h"
 
@@ -52,6 +52,14 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
                   "WHERE date >= ? AND date <= ? GROUP BY date ORDER BY date");
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd")); q.exec();
         while (q.next()) { timeLabels << q.value(0).toString(); timeData << q.value(1).toDouble(); }
+
+        // fallback to raw data if aggregation table is empty for this range
+        if (timeData.isEmpty()) {
+            q.prepare("SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt, COUNT(*) as cnt "
+                      "FROM operations WHERE time >= ? AND time < ? GROUP BY dt ORDER BY dt");
+            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+            while (q.next()) { timeLabels << q.value(0).toString(); timeData << q.value(1).toDouble(); }
+        }
     } else {
         q.prepare("SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt, COUNT(*) as cnt "
                   "FROM operations WHERE time >= ? AND time < ? GROUP BY dt ORDER BY dt");
@@ -72,7 +80,11 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
 
     if (!timeData.isEmpty()) {
         int n = timeData.size();
+        QVector<double> x(n);
+        for (int i = 0; i < n; ++i) x[i] = i;
+
         if (n <= 7) {
+            // bar chart + curve for small ranges
             auto* chart = new QwtPlotBarChart("Time Distribution");
             styleBarChart(chart, QColor("#10B981"));
             chart->setSamples(timeData);
@@ -82,16 +94,17 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
             } else {
                 chart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, 1);
             }
-            auto* curve = new QwtPlotCurve("Time Distribution");
-            QVector<double> x(n);
-            for (int i = 0; i < n; ++i) x[i] = i;
-            curve->setSamples(x.data(), timeData.data(), n);
-            curve->setPen(QPen(QColor("#2563EB"), 2));
-            curve->setBrush(QBrush(QColor(37, 99, 235, 40)));
-            curve->attach(chart_);
-            int step = (n <= 30) ? 5 : (n <= 90) ? 10 : 30;
-            chart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, step);
         }
+
+        // always draw the curve
+        auto* curve = new QwtPlotCurve("Time Distribution");
+        curve->setSamples(x.data(), timeData.data(), n);
+        curve->setPen(QPen(QColor("#2563EB"), 2));
+        curve->setBrush(QBrush(QColor(37, 99, 235, 40)));
+        curve->attach(chart_);
+
+        int step = (n <= 30) ? 5 : (n <= 90) ? 10 : 30;
+        chart_->setAxisScale(QwtPlot::xBottom, 0, n - 1, step);
         double maxVal = *std::max_element(timeData.begin(), timeData.end());
         chart_->setAxisScale(QwtPlot::yLeft, 0, qMax(maxVal * 1.2, 1.0));
         chart_->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(timeLabels));
