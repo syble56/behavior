@@ -1,4 +1,4 @@
-﻿#include "analysis_dialog.h"
+#include "analysis_dialog.h"
 #include "date_picker/date_field.h"
 #include "operations_tab.h"
 #include "modules_tab.h"
@@ -23,12 +23,60 @@
 
 using namespace ui_shared::behavior;
 
+namespace {
+constexpr int  kDialogMinWidth     = 1100;
+constexpr int  kDialogMinHeight    = 800;
+constexpr int  kLayoutSpacing      = 12;
+constexpr int  kMargin             = 16;
+constexpr int  kSpacingSmall       = 8;
+constexpr int  kSpacingMid         = 12;
+constexpr int  kCardSpacing        = 10;
+constexpr int  kCardMinHeight      = 72;
+constexpr int  kComboMinWidth      = 120;
+constexpr int  kInitDelayMs        = 100;
+constexpr int  kPresetToday        = 0;
+constexpr int  kPresetWeek         = 1;
+constexpr int  kPresetMonth        = 2;
+constexpr int  kPresetHalfYear     = 3;
+constexpr int  kPresetCustom       = 4;
+constexpr int  kPresetWeekDays     = 6;
+constexpr int  kPresetMonthDays    = 29;
+constexpr int  kPresetHalfYearDays = 179;
+constexpr int  kCardAvgDistance    = 2;
+constexpr auto kDateFormat         = "yyyy-MM-dd";
+}
+
 // ============ Constructor ============
 
 AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle("Behavior Analysis");
-    setMinimumSize(1100, 800);
+    setMinimumSize(kDialogMinWidth, kDialogMinHeight);
 
+    setupStyle();
+
+    auto* lay = new QVBoxLayout(this);
+    lay->setSpacing(kLayoutSpacing);
+    lay->setContentsMargins(kMargin, kMargin, kMargin, kMargin);
+
+    QComboBox* rangeCombo = nullptr;
+    setupDateRange(lay, rangeCombo);
+    setupSummaryCards(lay);
+    setupTabs(lay);
+
+    auto labels = findChildren<QLabel*>();
+    QLabel* startLabel = nullptr;
+    QLabel* endLabel = nullptr;
+    for (auto* lbl : labels) {
+        if (lbl->text() == "Start:") startLabel = lbl;
+        if (lbl->text() == "End:")   endLabel = lbl;
+    }
+
+    setupSignals(rangeCombo, startLabel, endLabel);
+
+    QTimer::singleShot(kInitDelayMs, this, &AnalysisDialog::onAnalyze);
+}
+
+void AnalysisDialog::setupStyle() {
     setStyleSheet(R"(
         QDialog { background-color: #32353A; }
         QGroupBox {
@@ -120,38 +168,33 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
         QScrollBar::handle:horizontal:hover { background-color: #94A3B8; }
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
     )");
+}
 
-    auto* lay = new QVBoxLayout(this);
-    lay->setSpacing(12);
-    lay->setContentsMargins(16, 16, 16, 16);
-
-    // --- Date range ---
+void AnalysisDialog::setupDateRange(QVBoxLayout* parentLay, QComboBox*& rangeCombo) {
     auto* timeGroup = new QGroupBox("Date Range", this);
     auto* timeLay = new QHBoxLayout(timeGroup);
-    timeLay->setSpacing(8);
+    timeLay->setSpacing(kSpacingSmall);
 
     timeLay->addWidget(new QLabel("Range:", this));
-    auto* rangeCombo = new QComboBox(this);
-    rangeCombo->setMinimumWidth(120);
+    rangeCombo = new QComboBox(this);
+    rangeCombo->setMinimumWidth(kComboMinWidth);
     rangeCombo->addItems({"Today", "Last 1 Week", "Last 1 Month", "Last 6 Months", "Custom"});
-    rangeCombo->setCurrentIndex(1);  // Last 1 Week
+    rangeCombo->setCurrentIndex(kPresetWeek);
     timeLay->addWidget(rangeCombo);
-
-    timeLay->addSpacing(8);
+    timeLay->addSpacing(kSpacingSmall);
 
     auto* startLabel = new QLabel("Start:", this);
     startDate_ = new DateField(this);
-    startDate_->setDate(QDate::currentDate().addDays(-6));  // Last 1 Week
-    startDate_->setDisplayFormat("yyyy-MM-dd");
+    startDate_->setDate(QDate::currentDate().addDays(-kPresetWeekDays));
+    startDate_->setDisplayFormat(kDateFormat);
     startDate_->setLanguage(DateField::English);
 
     auto* endLabel = new QLabel("End:", this);
     endDate_ = new DateField(this);
     endDate_->setDate(QDate::currentDate());
-    endDate_->setDisplayFormat("yyyy-MM-dd");
+    endDate_->setDisplayFormat(kDateFormat);
     endDate_->setLanguage(DateField::English);
 
-    // 默认隐藏日期选择器（预设模式）
     startLabel->hide();
     startDate_->hide();
     endLabel->hide();
@@ -159,10 +202,10 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
 
     timeLay->addWidget(startLabel);
     timeLay->addWidget(startDate_);
-    timeLay->addSpacing(12);
+    timeLay->addSpacing(kSpacingMid);
     timeLay->addWidget(endLabel);
     timeLay->addWidget(endDate_);
-    timeLay->addSpacing(8);
+    timeLay->addSpacing(kSpacingSmall);
 
     auto* btnAnalyze = new QPushButton("Analyze", this);
     btnAnalyze->setDefault(true);
@@ -173,11 +216,12 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
     )");
     timeLay->addWidget(btnAnalyze);
     timeLay->addStretch();
-    lay->addWidget(timeGroup);
+    parentLay->addWidget(timeGroup);
+}
 
-    // --- Summary cards ---
+void AnalysisDialog::setupSummaryCards(QVBoxLayout* parentLay) {
     auto* cardLay = new QHBoxLayout();
-    cardLay->setSpacing(10);
+    cardLay->setSpacing(kCardSpacing);
 
     auto makeCard = [](const char* title, const char* value) {
         auto* card = new QLabel();
@@ -187,7 +231,7 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
             "<tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>%2</span></td></tr></table>")
             .arg(title).arg(value));
         card->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-        card->setMinimumHeight(72);
+        card->setMinimumHeight(kCardMinHeight);
         card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         return card;
     };
@@ -200,9 +244,10 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
     };
 
     for (auto* card : statCards_) cardLay->addWidget(card);
-    lay->addLayout(cardLay);
+    parentLay->addLayout(cardLay);
+}
 
-    // --- Tabs ---
+void AnalysisDialog::setupTabs(QVBoxLayout* parentLay) {
     tabWidget_ = new QTabWidget(this);
 
     operationsTab_ = new OperationsTab(this);
@@ -228,28 +273,28 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
 
     connect(distanceTab_, &DistanceTab::avgDistanceChanged, this,
         [this](int avgPx) {
-            statCards_[2]->setText(QString(
+            statCards_[kCardAvgDistance]->setText(QString(
                 "<table cellspacing=4><tr><td><span style='color:#94A3B8;font-size:11px;'>Avg Distance</span></td></tr>"
                 "<tr><td><span style='font-size:22px;font-weight:700;color:#FFFFFF;'>%1px</span></td></tr></table>")
                 .arg(avgPx));
         });
 
-    lay->addWidget(tabWidget_);
+    parentLay->addWidget(tabWidget_);
+}
 
-    // --- Signals ---
+void AnalysisDialog::setupSignals(QComboBox* rangeCombo, QLabel* startLabel, QLabel* endLabel) {
     auto applyPreset = [this](int index) {
         QDate today = QDate::currentDate();
         switch (index) {
-            case 0: endDate_->setDate(today); startDate_->setDate(today); break;             // Today
-            case 1: endDate_->setDate(today); startDate_->setDate(today.addDays(-6)); break; // Last 1 Week
-            case 2: endDate_->setDate(today); startDate_->setDate(today.addDays(-29)); break;// Last 1 Month
-            case 3: endDate_->setDate(today); startDate_->setDate(today.addDays(-179)); break;// Last 6 Months
-            // case 4: Custom — 不改日期，用户手动选
+            case kPresetToday:  endDate_->setDate(today); startDate_->setDate(today); break;
+            case kPresetWeek:   endDate_->setDate(today); startDate_->setDate(today.addDays(-kPresetWeekDays)); break;
+            case kPresetMonth:  endDate_->setDate(today); startDate_->setDate(today.addDays(-kPresetMonthDays)); break;
+            case kPresetHalfYear: endDate_->setDate(today); startDate_->setDate(today.addDays(-kPresetHalfYearDays)); break;
         }
     };
     connect(rangeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
         [this, applyPreset, startLabel, endLabel, rangeCombo](int index) {
-            bool isCustom = (index == 4);
+            bool isCustom = (index == kPresetCustom);
             startLabel->setVisible(isCustom);
             startDate_->setVisible(isCustom);
             endLabel->setVisible(isCustom);
@@ -259,9 +304,8 @@ AnalysisDialog::AnalysisDialog(QWidget* parent) : QDialog(parent) {
                 onAnalyze();
             }
         });
+    auto* btnAnalyze = findChild<QPushButton*>();
     connect(btnAnalyze, &QPushButton::clicked, this, &AnalysisDialog::onAnalyze);
-
-    QTimer::singleShot(100, this, &AnalysisDialog::onAnalyze);
 }
 
 // ============ onAnalyze ============
@@ -305,7 +349,7 @@ void AnalysisDialog::onAnalyze() {
     int activeDays = 0;
     if (useAggSummary) {
         q.prepare("SELECT COUNT(DISTINCT substr(time_bucket,1,10)) FROM agg_time_distribution WHERE time_bucket >= ? AND time_bucket <= ?");
-        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
+        q.addBindValue(start.toString(kDateFormat)); q.addBindValue(end.toString(kDateFormat));
         q.exec();
         if (q.next()) activeDays = q.value(0).toInt();
     } else {
@@ -319,7 +363,7 @@ void AnalysisDialog::onAnalyze() {
     int dlgCount = 0;
     if (useAggSummary) {
         q.prepare("SELECT SUM(open_count) FROM agg_dialog_stats WHERE time_bucket >= ? AND time_bucket <= ?");
-        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
+        q.addBindValue(start.toString(kDateFormat)); q.addBindValue(end.toString(kDateFormat));
         q.exec();
         if (q.next()) dlgCount = q.value(0).toInt();
     } else {

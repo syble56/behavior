@@ -1,4 +1,4 @@
-﻿#include "time_tab.h"
+#include "time_tab.h"
 #include "chart_widgets.h"
 #include "storage/database.h"
 
@@ -12,6 +12,10 @@
 #include <QHash>
 #include <QDate>
 #include <algorithm>
+
+namespace {
+constexpr auto kDateFormat = "yyyy-MM-dd";
+}
 
 #include <qwt_plot_barchart.h>
 #include <qwt_plot_curve.h>
@@ -36,8 +40,8 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
 
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
-    QString startBucket = start.toString("yyyy-MM-dd");
-    QString endBucket = end.toString("yyyy-MM-dd");
+    QString startBucket = start.toString(kDateFormat);
+    QString endBucket = end.toString(kDateFormat);
     int rangeDays = start.date().daysTo(end.date()) + 1;
 
     bool useAgg = (rangeDays > 7);
@@ -50,7 +54,7 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
     if (useAgg) {
         q.prepare("SELECT substr(time_bucket,1,10) as dt, SUM(count) as cnt FROM agg_time_distribution "
                   "WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY dt ORDER BY dt");
-        q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd")); q.exec();
+        q.addBindValue(start.toString(kDateFormat)); q.addBindValue(end.toString(kDateFormat)); q.exec();
         while (q.next()) { timeLabels << q.value(0).toString(); timeData << q.value(1).toDouble(); }
     } else {
         q.prepare("SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt, COUNT(*) as cnt "
@@ -65,7 +69,7 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
         for (int i = 0; i < timeLabels.size(); ++i) dayMap[timeLabels[i]] = timeData[i];
         timeLabels.clear(); timeData.clear();
         for (QDate d = start.date(); d <= end.date(); d = d.addDays(1)) {
-            QString key = d.toString("yyyy-MM-dd");
+            QString key = d.toString(kDateFormat);
             timeLabels << key; timeData << dayMap.value(key, 0.0);
         }
     }
@@ -101,7 +105,7 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
         chart_->setAxisScale(QwtPlot::yLeft, 0, qMax(maxVal * 1.2, 1.0));
         chart_->setAxisScaleDraw(QwtPlot::xBottom, new ActionScaleDraw(timeLabels));
         chart_->setAxisTitle(QwtPlot::xBottom,
-            QString("Date (%1 to %2)").arg(start.toString("yyyy-MM-dd")).arg(end.toString("yyyy-MM-dd")));
+            QString("Date (%1 to %2)").arg(start.toString(kDateFormat)).arg(end.toString(kDateFormat)));
         chart_->replot();
     } else {
         chart_->setAxisTitle(QwtPlot::xBottom, "Date (no data)");

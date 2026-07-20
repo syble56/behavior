@@ -3,6 +3,8 @@
 #include <QDialog>
 #include <QTabWidget>
 #include <QLabel>
+#include <QComboBox>
+#include <QVBoxLayout>
 
 class DateField;
 class OperationsTab;
@@ -22,6 +24,12 @@ private slots:
     void onAnalyze();
 
 private:
+    void setupStyle();
+    void setupDateRange(QVBoxLayout* parentLay, QComboBox*& rangeCombo);
+    void setupSummaryCards(QVBoxLayout* parentLay);
+    void setupTabs(QVBoxLayout* parentLay);
+    void setupSignals(QComboBox* rangeCombo, QLabel* startLabel, QLabel* endLabel);
+
     DateField* startDate_ = nullptr;
     DateField* endDate_ = nullptr;
     QTabWidget* tabWidget_ = nullptr;

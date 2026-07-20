@@ -6,11 +6,21 @@
 namespace ui_shared {
 namespace behavior {
 
+namespace {
+constexpr auto kSqlFmtHour   = "%Y-%m-%d %H:00";
+constexpr auto kSqlFmtDay    = "%Y-%m-%d";
+constexpr auto kQtFmtHour    = "yyyy-MM-dd HH:00";
+constexpr auto kQtFmtDay     = "yyyy-MM-dd";
+constexpr auto kGranHour     = "hour";
+constexpr auto kGranDay      = "day";
+constexpr auto kMsPerSec     = 1000;
+}
+
 Aggregator::Aggregator(QObject* parent) : QObject(parent) {}
 
 QString Aggregator::formatTimeBucket(const QDateTime& t, Granularity g) {
-    return (g == Granularity::Hour) ? t.toString("yyyy-MM-dd HH:00")
-                                    : t.toString("yyyy-MM-dd");
+    return (g == Granularity::Hour) ? t.toString(kQtFmtHour)
+                                    : t.toString(kQtFmtDay);
 }
 
 void Aggregator::aggregateRange(const QDateTime& start, const QDateTime& end, Granularity g) {
@@ -27,8 +37,8 @@ void Aggregator::aggregateRange(const QDateTime& start, const QDateTime& end, Gr
 void Aggregator::aggregateOperations(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
-    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-    QString gran = (g == Granularity::Hour) ? "hour" : "day";
+    QString fmt = (g == Granularity::Hour) ? kSqlFmtHour : kSqlFmtDay;
+    QString gran = (g == Granularity::Hour) ? kGranHour : kGranDay;
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
@@ -50,8 +60,8 @@ void Aggregator::aggregateOperations(const QDateTime& start, const QDateTime& en
 void Aggregator::aggregateModules(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
-    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-    QString gran = (g == Granularity::Hour) ? "hour" : "day";
+    QString fmt = (g == Granularity::Hour) ? kSqlFmtHour : kSqlFmtDay;
+    QString gran = (g == Granularity::Hour) ? kGranHour : kGranDay;
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
@@ -72,8 +82,8 @@ void Aggregator::aggregateModules(const QDateTime& start, const QDateTime& end, 
 void Aggregator::aggregateInputs(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
-    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-    QString gran = (g == Granularity::Hour) ? "hour" : "day";
+    QString fmt = (g == Granularity::Hour) ? kSqlFmtHour : kSqlFmtDay;
+    QString gran = (g == Granularity::Hour) ? kGranHour : kGranDay;
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
@@ -95,8 +105,8 @@ void Aggregator::aggregateInputs(const QDateTime& start, const QDateTime& end, G
 void Aggregator::aggregateHeatmap(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
-    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-    QString gran = (g == Granularity::Hour) ? "hour" : "day";
+    QString fmt = (g == Granularity::Hour) ? kSqlFmtHour : kSqlFmtDay;
+    QString gran = (g == Granularity::Hour) ? kGranHour : kGranDay;
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
@@ -118,8 +128,8 @@ void Aggregator::aggregateHeatmap(const QDateTime& start, const QDateTime& end, 
 void Aggregator::aggregateDialogs(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
-    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-    QString gran = (g == Granularity::Hour) ? "hour" : "day";
+    QString fmt = (g == Granularity::Hour) ? kSqlFmtHour : kSqlFmtDay;
+    QString gran = (g == Granularity::Hour) ? kGranHour : kGranDay;
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
     
@@ -146,8 +156,8 @@ void Aggregator::aggregateDialogs(const QDateTime& start, const QDateTime& end, 
 void Aggregator::aggregateTimeDistribution(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
-    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-    QString gran = (g == Granularity::Hour) ? "hour" : "day";
+    QString fmt = (g == Granularity::Hour) ? kSqlFmtHour : kSqlFmtDay;
+    QString gran = (g == Granularity::Hour) ? kGranHour : kGranDay;
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
 
