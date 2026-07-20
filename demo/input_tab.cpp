@@ -61,23 +61,6 @@ void InputTab::updateData(const QDateTime& start, const QDateTime& end) {
             inputLabels << label;
             inputData << cnt;
         }
-        if (inputData.isEmpty()) {
-            q.prepare("SELECT input_method, COUNT(*) as cnt FROM operations "
-                      "WHERE time >= ? AND time < ? AND input_method != 'derived' "
-                      "GROUP BY input_method ORDER BY cnt DESC");
-            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
-            while (q.next()) {
-                QString method = q.value(0).toString();
-                double cnt = q.value(1).toDouble();
-                if (cnt <= 0) continue;
-                QString label = method;
-                for (auto& e : entries) {
-                    if (method == e.dbValue) { label = e.label; break; }
-                }
-                inputLabels << label;
-                inputData << cnt;
-            }
-        }
     } else {
         q.prepare("SELECT input_method, COUNT(*) as cnt FROM operations "
                   "WHERE time >= ? AND time < ? AND input_method != 'derived' "

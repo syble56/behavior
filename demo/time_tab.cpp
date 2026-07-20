@@ -52,14 +52,6 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
                   "WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY dt ORDER BY dt");
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd")); q.exec();
         while (q.next()) { timeLabels << q.value(0).toString(); timeData << q.value(1).toDouble(); }
-
-        // fallback to raw data if aggregation table is empty for this range
-        if (timeData.isEmpty()) {
-            q.prepare("SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt, COUNT(*) as cnt "
-                      "FROM operations WHERE time >= ? AND time < ? GROUP BY dt ORDER BY dt");
-            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
-            while (q.next()) { timeLabels << q.value(0).toString(); timeData << q.value(1).toDouble(); }
-        }
     } else {
         q.prepare("SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')) as dt, COUNT(*) as cnt "
                   "FROM operations WHERE time >= ? AND time < ? GROUP BY dt ORDER BY dt");

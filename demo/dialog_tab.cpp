@@ -76,27 +76,6 @@ void DialogTab::updateData(const QDateTime& start, const QDateTime& end) {
             s.avgDurationMs = q.value(2).toDouble();
             dialogs.append(s);
         }
-        if (dialogs.isEmpty()) {
-            // fallback to raw data
-            q.prepare(
-                "SELECT "
-                "  CASE WHEN module IS NOT NULL AND module != '' THEN module || '/' ELSE '' END || "
-                "  COALESCE(NULLIF(window_title,''), NULLIF(control_name,''), window_class) as dlg, "
-                "  SUM(CASE WHEN event_type='dialog_open' THEN 1 ELSE 0 END) as opens, "
-                "  AVG(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) END) as avg_dur, "
-                "  MIN(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,999999999) END) as min_dur, "
-                "  MAX(CASE WHEN event_type='dialog_close' THEN COALESCE(duration,0) END) as max_dur "
-                "FROM operations WHERE time >= ? AND time < ? AND event_type IN ('dialog_open','dialog_close') "
-                "GROUP BY dlg ORDER BY opens DESC");
-            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
-            while (q.next()) {
-                DialogStat s;
-                s.cls = q.value(0).toString();
-                s.openCount = q.value(1).toInt();
-                s.avgDurationMs = q.value(2).toDouble();
-                dialogs.append(s);
-            }
-        }
     } else {
         // Query raw operations for detailed stats
         q.prepare(

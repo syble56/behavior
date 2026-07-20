@@ -47,12 +47,6 @@ void OperationsTab::updateData(const QDateTime& start, const QDateTime& end) {
                   "WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY action_key ORDER BY cnt DESC LIMIT 15");
         q.addBindValue(startBucket); q.addBindValue(endBucket); q.exec();
         while (q.next()) { opLabels << q.value(0).toString(); opData << q.value(1).toDouble(); }
-        if (opData.isEmpty()) {
-            q.prepare("SELECT COALESCE(NULLIF(action_name,''), NULLIF(control_name,''), event_type) as action, COUNT(*) as cnt "
-                      "FROM operations WHERE time >= ? AND time < ? GROUP BY action ORDER BY cnt DESC LIMIT 15");
-            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
-            while (q.next()) { opLabels << q.value(0).toString(); opData << q.value(1).toDouble(); }
-        }
     } else {
         q.prepare("SELECT COALESCE(NULLIF(action_name,''), NULLIF(control_name,''), event_type) as action, COUNT(*) as cnt "
                   "FROM operations WHERE time >= ? AND time < ? GROUP BY action ORDER BY cnt DESC LIMIT 15");

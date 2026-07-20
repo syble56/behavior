@@ -308,14 +308,6 @@ void AnalysisDialog::onAnalyze() {
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
         q.exec();
         if (q.next()) activeDays = q.value(0).toInt();
-        // fallback to raw data
-        if (activeDays == 0) {
-            q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
-                      "FROM operations WHERE time >= ? AND time < ?");
-            q.addBindValue(startMs); q.addBindValue(endMs);
-            q.exec();
-            if (q.next()) activeDays = q.value(0).toInt();
-        }
     } else {
         q.prepare("SELECT COUNT(DISTINCT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime'))) "
                   "FROM operations WHERE time >= ? AND time < ?");
@@ -330,13 +322,6 @@ void AnalysisDialog::onAnalyze() {
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
         q.exec();
         if (q.next()) dlgCount = q.value(0).toInt();
-        // fallback to raw data
-        if (dlgCount == 0) {
-            q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
-            q.addBindValue(startMs); q.addBindValue(endMs);
-            q.exec();
-            if (q.next()) dlgCount = q.value(0).toInt();
-        }
     } else {
         q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time < ? AND event_type='dialog_open'");
         q.addBindValue(startMs); q.addBindValue(endMs);
