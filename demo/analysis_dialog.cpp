@@ -304,7 +304,7 @@ void AnalysisDialog::onAnalyze() {
     
     int activeDays = 0;
     if (useAggSummary) {
-        q.prepare("SELECT COUNT(DISTINCT date) FROM agg_time_distribution WHERE date >= ? AND date <= ?");
+        q.prepare("SELECT COUNT(DISTINCT substr(time_bucket,1,10)) FROM agg_time_distribution WHERE time_bucket >= ? AND time_bucket <= ?");
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd"));
         q.exec();
         if (q.next()) activeDays = q.value(0).toInt();

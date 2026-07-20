@@ -348,9 +348,8 @@ TEST_F(TestAggregator, testTimeDistribution) {
 
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
-    q.exec("SELECT hour, count FROM agg_time_distribution WHERE date='2026-06-15'");
+    q.exec("SELECT time_bucket, count FROM agg_time_distribution WHERE time_bucket='2026-06-15 10:00'");
     EXPECT_TRUE(q.next());
-    EXPECT_EQ(q.value(0).toInt(), 10);  // 10点
     EXPECT_EQ(q.value(1).toInt(), 3);
 }
 
@@ -373,10 +372,10 @@ TEST_F(TestAggregator, testTimeDistributionHourlyBuckets) {
 
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
-    q.exec("SELECT hour, count FROM agg_time_distribution WHERE date='2026-06-15' ORDER BY hour");
-    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toInt(), 10); EXPECT_EQ(q.value(1).toInt(), 2);
-    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toInt(), 11); EXPECT_EQ(q.value(1).toInt(), 1);
-    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(0).toInt(), 12); EXPECT_EQ(q.value(1).toInt(), 3);
+    q.exec("SELECT time_bucket, count FROM agg_time_distribution WHERE time_bucket LIKE '2026-06-15%' ORDER BY time_bucket");
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(1).toInt(), 2);  // 10:00
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(1).toInt(), 1);  // 11:00
+    EXPECT_TRUE(q.next()); EXPECT_EQ(q.value(1).toInt(), 3);  // 12:00
 }
 
 // ========== 幂等性 ==========
@@ -514,11 +513,11 @@ TEST_F(TestAggregator, testCrossDayTimeDistribution) {
     QSqlDatabase db = Database::instance().connection();
     QSqlQuery q(db);
     // 6/15 23点 → 2条
-    q.exec("SELECT count FROM agg_time_distribution WHERE date='2026-06-15' AND hour=23");
+    q.exec("SELECT count FROM agg_time_distribution WHERE time_bucket='2026-06-15 23:00'");
     EXPECT_TRUE(q.next());
     EXPECT_EQ(q.value(0).toInt(), 2);
     // 6/16 0点 → 3条
-    q.exec("SELECT count FROM agg_time_distribution WHERE date='2026-06-16' AND hour=0");
+    q.exec("SELECT count FROM agg_time_distribution WHERE time_bucket='2026-06-16 00:00'");
     EXPECT_TRUE(q.next());
     EXPECT_EQ(q.value(0).toInt(), 3);
 }

@@ -448,8 +448,8 @@ void MainWindow::onAggregation() {
 
     // time_distribution
     q.exec(QString(
-        "INSERT OR REPLACE INTO agg_time_distribution (date,hour,count) "
-        "SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')), 0, COUNT(*) "
+        "INSERT OR REPLACE INTO agg_time_distribution (time_bucket,granularity,count) "
+        "SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')), 'day', COUNT(*) "
         "FROM operations WHERE time >= %1 AND time < %2 GROUP BY 1")
         .arg(startMs).arg(endMs));
 

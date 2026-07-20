@@ -65,9 +65,9 @@ int main(int argc, char* argv[]) {
     if (q.next()) out << "  MODULE TOTAL: " << q.value(0).toInt() << "\n";
 
     out << "\n=== 7/01 agg_time_distribution ===\n";
-    q.exec("SELECT hour, count FROM agg_time_distribution WHERE date='2026-07-01' ORDER BY hour");
+    q.exec("SELECT time_bucket, count FROM agg_time_distribution WHERE time_bucket LIKE '2026-07-01%' ORDER BY time_bucket");
     int tdTotal = 0;
-    while (q.next()) { out << "  hr " << q.value(0).toInt() << " : " << q.value(1).toInt() << "\n"; tdTotal += q.value(1).toInt(); }
+    while (q.next()) { out << "  " << q.value(0).toString() << " : " << q.value(1).toInt() << "\n"; tdTotal += q.value(1).toInt(); }
     out << "  TD TOTAL: " << tdTotal << "\n";
 
     out << "\n=== 7/01 time range in operations ===\n";

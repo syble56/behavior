@@ -20,9 +20,7 @@ void Aggregator::aggregateRange(const QDateTime& start, const QDateTime& end, Gr
     aggregateInputs(start, end, g);
     aggregateHeatmap(start, end, g);
     aggregateDialogs(start, end, g);
-    if (g == Granularity::Hour) {
-        aggregateTimeDistribution(start, end);
-    }
+    aggregateTimeDistribution(start, end, g);
     emit aggregationCompleted(processed);
 }
 
@@ -145,19 +143,20 @@ void Aggregator::aggregateDialogs(const QDateTime& start, const QDateTime& end, 
     }
 }
 
-void Aggregator::aggregateTimeDistribution(const QDateTime& start, const QDateTime& end) {
+void Aggregator::aggregateTimeDistribution(const QDateTime& start, const QDateTime& end, Granularity g) {
     QSqlDatabase db = Database::instance().connection();
     if (!db.isOpen()) return;
+    QString fmt = (g == Granularity::Hour) ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
+    QString gran = (g == Granularity::Hour) ? "hour" : "day";
     qint64 startMs = start.toMSecsSinceEpoch();
     qint64 endMs = end.toMSecsSinceEpoch();
-    
+
     QString sql = QString(
-        "INSERT OR REPLACE INTO agg_time_distribution (date,hour,count) "
-        "SELECT strftime('%Y-%m-%d', datetime(time/1000,'unixepoch','localtime')), "
-        "CAST(strftime('%H', datetime(time/1000,'unixepoch','localtime')) AS INTEGER), COUNT(*) "
-        "FROM operations WHERE time >= %1 AND time < %2 GROUP BY 1, 2")
-        .arg(startMs).arg(endMs);
-    
+        "INSERT OR REPLACE INTO agg_time_distribution (time_bucket,granularity,count) "
+        "SELECT strftime('%1', datetime(time/1000,'unixepoch','localtime')), '%2', COUNT(*) "
+        "FROM operations WHERE time >= %3 AND time < %4 GROUP BY 1")
+        .arg(fmt).arg(gran).arg(startMs).arg(endMs);
+
     QSqlQuery q(db);
     if (!q.exec(sql)) {
         qWarning("[Behavior] agg time_dist failed: %s", qPrintable(q.lastError().text()));

@@ -1,4 +1,4 @@
-#include "heatmap_tab.h"
+﻿#include "heatmap_tab.h"
 #include "storage/database.h"
 
 #include <QVBoxLayout>
@@ -38,6 +38,12 @@ void HeatmapTab::updateData(const QDateTime& start, const QDateTime& end) {
                   "WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY heat_region");
         q.addBindValue(startBucket); q.addBindValue(endBucket); q.exec();
         while (q.next()) { int r = q.value(0).toInt(); int c = q.value(1).toInt(); heatData[r] = c; maxHeat = qMax(maxHeat, c); }
+        if (heatData.isEmpty()) {
+            q.prepare("SELECT heat_region, COUNT(*) as cnt FROM operations WHERE time >= ? AND time < ? "
+                      "AND is_main_window = 1 AND event_type IN ('mouse_click','touch_tap','area_click') GROUP BY heat_region");
+            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+            while (q.next()) { int r = q.value(0).toInt(); int c = q.value(1).toInt(); heatData[r] = c; maxHeat = qMax(maxHeat, c); }
+        }
     } else {
         q.prepare("SELECT heat_region, COUNT(*) as cnt FROM operations WHERE time >= ? AND time < ? "
                   "AND is_main_window = 1 AND event_type IN ('mouse_click','touch_tap','area_click') GROUP BY heat_region");

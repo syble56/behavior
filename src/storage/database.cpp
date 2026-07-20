@@ -181,8 +181,9 @@ bool Database::createTables(QSqlDatabase& db) {
         "  dialog_class TEXT NOT NULL, open_count INTEGER NOT NULL, total_duration INTEGER NOT NULL,"
         "  avg_duration INTEGER, UNIQUE(time_bucket, granularity, dialog_class))",
         "CREATE TABLE IF NOT EXISTS agg_time_distribution ("
-        "  id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, hour INTEGER NOT NULL,"
-        "  count INTEGER NOT NULL, UNIQUE(date, hour))",
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT, time_bucket TEXT NOT NULL,"
+        "  granularity TEXT NOT NULL, count INTEGER NOT NULL,"
+        "  UNIQUE(time_bucket, granularity))",
         nullptr
     };
     for (int i = 0; SQL[i]; ++i) {
@@ -382,16 +383,12 @@ int Database::cleanOldData(int retentionDays) {
     // 聚合表清理
     QString cutoffDate = QDateTime::currentDateTime().addDays(-retentionDays).toString("yyyy-MM-dd");
     for (const char* tbl : {"agg_operation_stats","agg_module_stats","agg_input_stats",
-                            "agg_heatmap_stats","agg_dialog_stats"}) {
+                            "agg_heatmap_stats","agg_dialog_stats","agg_time_distribution"}) {
         QSqlQuery qd(db);
         qd.prepare(QStringLiteral("DELETE FROM %1 WHERE time_bucket < ?").arg(QString::fromLatin1(tbl)));
         qd.addBindValue(cutoffDate);
         qd.exec();
     }
-    QSqlQuery qt(db);
-    qt.prepare("DELETE FROM agg_time_distribution WHERE date < ?");
-    qt.addBindValue(cutoffDate);
-    qt.exec();
     return removed;
 }
 

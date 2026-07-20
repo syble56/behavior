@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
 
     // 3. 时间分布：useAgg 路径
     out << "=== Time distribution (useAgg path) ===\n";
-    q.prepare("SELECT date, SUM(count) as cnt FROM agg_time_distribution WHERE date >= ? AND date <= ? GROUP BY date ORDER BY date");
+    q.prepare("SELECT substr(time_bucket,1,10) as dt, SUM(count) as cnt FROM agg_time_distribution WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY dt ORDER BY dt");
     q.addBindValue(startBucket);
     q.addBindValue(endBucket);
     q.exec();
@@ -76,8 +76,8 @@ int main(int argc, char* argv[]) {
 
     // 5. agg_time_distribution 实际内容
     out << "=== agg_time_distribution actual content ===\n";
-    q.exec("SELECT date, hour, count FROM agg_time_distribution ORDER BY date, hour");
-    while (q.next()) out << "  date=" << q.value(0).toString() << " hour=" << q.value(1).toInt() << " count=" << q.value(2).toInt() << "\n";
+    q.exec("SELECT time_bucket, count FROM agg_time_distribution ORDER BY time_bucket");
+    while (q.next()) out << "  " << q.value(0).toString() << " : " << q.value(1).toInt() << "\n";
 
     // 6. operations 表内容概况
     out << "\n=== operations summary ===\n";

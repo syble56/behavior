@@ -31,7 +31,7 @@ private:
     void aggregateInputs(const QDateTime& start, const QDateTime& end, Granularity g);
     void aggregateHeatmap(const QDateTime& start, const QDateTime& end, Granularity g);
     void aggregateDialogs(const QDateTime& start, const QDateTime& end, Granularity g);
-    void aggregateTimeDistribution(const QDateTime& start, const QDateTime& end);
+    void aggregateTimeDistribution(const QDateTime& start, const QDateTime& end, Granularity g);
 
     QString formatTimeBucket(const QDateTime& time, Granularity g);
 };

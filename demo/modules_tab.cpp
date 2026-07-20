@@ -1,4 +1,4 @@
-#include "modules_tab.h"
+﻿#include "modules_tab.h"
 #include "chart_widgets.h"
 #include "storage/database.h"
 
@@ -47,6 +47,12 @@ void ModulesTab::updateData(const QDateTime& start, const QDateTime& end) {
                   "WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY module_class ORDER BY cnt DESC");
         q.addBindValue(startBucket); q.addBindValue(endBucket); q.exec();
         while (q.next()) { modLabels << q.value(0).toString(); modData << q.value(1).toDouble(); }
+        if (modData.isEmpty()) {
+            q.prepare("SELECT COALESCE(NULLIF(window_class,''), 'unknown') as module, COUNT(*) as cnt "
+                      "FROM operations WHERE time >= ? AND time < ? GROUP BY module ORDER BY cnt DESC");
+            q.addBindValue(startMs); q.addBindValue(endMs); q.exec();
+            while (q.next()) { modLabels << q.value(0).toString(); modData << q.value(1).toDouble(); }
+        }
     } else {
         q.prepare("SELECT COALESCE(NULLIF(window_class,''), 'unknown') as module, COUNT(*) as cnt "
                   "FROM operations WHERE time >= ? AND time < ? GROUP BY module ORDER BY cnt DESC");

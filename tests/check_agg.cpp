@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
     out << "  MODULE TOTAL: " << modTotal << "\n";
 
     out << "\n=== 7. agg_time_distribution ===\n";
-    q.exec("SELECT date, SUM(count) FROM agg_time_distribution GROUP BY date ORDER BY date");
+    q.exec("SELECT substr(time_bucket,1,10) as dt, SUM(count) FROM agg_time_distribution GROUP BY dt ORDER BY dt");
     qint64 tdTotal = 0;
     while (q.next()) {
         out << "  " << q.value(0).toString() << " : " << q.value(1).toLongLong() << "\n";

@@ -48,8 +48,8 @@ void TimeTab::updateData(const QDateTime& start, const QDateTime& end) {
     QStringList timeLabels;
 
     if (useAgg) {
-        q.prepare("SELECT date, SUM(count) as cnt FROM agg_time_distribution "
-                  "WHERE date >= ? AND date <= ? GROUP BY date ORDER BY date");
+        q.prepare("SELECT substr(time_bucket,1,10) as dt, SUM(count) as cnt FROM agg_time_distribution "
+                  "WHERE time_bucket >= ? AND time_bucket <= ? GROUP BY dt ORDER BY dt");
         q.addBindValue(start.toString("yyyy-MM-dd")); q.addBindValue(end.toString("yyyy-MM-dd")); q.exec();
         while (q.next()) { timeLabels << q.value(0).toString(); timeData << q.value(1).toDouble(); }
 
