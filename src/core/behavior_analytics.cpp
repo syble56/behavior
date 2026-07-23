@@ -98,6 +98,12 @@ void BehaviorAnalytics::init() {
     // 补齐上次未正常关闭的弹窗
     self.impl_->processor->recoverUnclosedDialogs();
 
+    // 恢复上次未正常关闭的会话（崩溃/被杀时 shutdown 未执行）
+    int recoveredSessions = Database::instance().recoverUnclosedSessions();
+    if (recoveredSessions > 0) {
+        fprintf(stdout, "[I] recovered %d unclosed sessions\n", recoveredSessions); fflush(stdout);
+    }
+
     // 6. 分析器
     self.impl_->analyzer = std::make_unique<BehaviorAnalyzer>();
 

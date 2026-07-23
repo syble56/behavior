@@ -34,6 +34,8 @@ public:
     // 会话
     bool insertSession(const Session& session);
     bool updateSession(const Session& session);
+    // 恢复未正常关闭的会话（程序崩溃后下次启动时调用）
+    int recoverUnclosedSessions();
 
     // 清理过期数据，返回删除条数
     int cleanOldData(int retentionDays);

@@ -401,6 +401,74 @@ TEST_F(TestDatabase, testSessionNotLostAfterReopen) {
     EXPECT_EQ(q.value(1).toInt(), 3);
 }
 
+TEST_F(TestDatabase, testRecoverUnclosedSessions) {
+    // 模拟程序崩溃: session 插入但 end_time=0, 有操作记录
+    QString sid = "crash-sess";
+    qint64 startTime = QDateTime::currentMSecsSinceEpoch();
+
+    Session s;
+    s.id = sid;
+    s.startTime = startTime;
+    s.endTime = 0;  // 未关闭
+    s.durationSeconds = 0;
+    s.operationCount = 0;
+    EXPECT_TRUE(Database::instance().insertSession(s));
+
+    // 写入 3 条操作
+    for (int i = 0; i < 3; ++i) {
+        Operation op = makeOp(startTime + i * 1000);
+        op.sessionId = sid;
+        Database::instance().insertOperation(op);
+    }
+
+    // 恢复未关闭的会话
+    int recovered = Database::instance().recoverUnclosedSessions();
+    EXPECT_EQ(recovered, 1);
+
+    // 验证 session 已被正确关闭
+    QSqlDatabase db = Database::instance().connection();
+    QSqlQuery q(db);
+    q.prepare("SELECT end_time,duration_seconds,operation_count FROM sessions WHERE id=?");
+    q.addBindValue(sid);
+    EXPECT_TRUE(q.exec());
+    EXPECT_TRUE(q.next());
+    EXPECT_GT(q.value(0).toLongLong(), 0);   // end_time 已设置
+    EXPECT_GT(q.value(1).toInt(), 0);         // duration_seconds > 0
+    EXPECT_EQ(q.value(2).toInt(), 3);         // operation_count = 3
+}
+
+TEST_F(TestDatabase, testRecoverUnclosedSessionsNone) {
+    // 所有 session 都已正常关闭, 不应恢复任何会话
+    Session s1;
+    s1.id = "closed-sess-1";
+    s1.startTime = QDateTime::currentMSecsSinceEpoch();
+    s1.endTime = s1.startTime + 10000;
+    s1.durationSeconds = 10;
+    s1.operationCount = 5;
+    Database::instance().insertSession(s1);
+
+    int recovered = Database::instance().recoverUnclosedSessions();
+    EXPECT_EQ(recovered, 0);
+}
+
+TEST_F(TestDatabase, testRecoverMultipleUnclosedSessions) {
+    // 多个未关闭的 session 都应被恢复
+    for (int i = 0; i < 3; ++i) {
+        Session s;
+        s.id = QString("crash-sess-%1").arg(i);
+        s.startTime = QDateTime::currentMSecsSinceEpoch() + i * 1000;
+        s.endTime = 0;
+        Database::instance().insertSession(s);
+
+        Operation op = makeOp(s.startTime + 500);
+        op.sessionId = s.id;
+        Database::instance().insertOperation(op);
+    }
+
+    int recovered = Database::instance().recoverUnclosedSessions();
+    EXPECT_EQ(recovered, 3);
+}
+
 // ========== 清理 ==========
 
 TEST_F(TestDatabase, testCleanOldData) {

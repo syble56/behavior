@@ -374,6 +374,48 @@ bool Database::updateSession(const Session& s) {
     return q.exec();
 }
 
+int Database::recoverUnclosedSessions() {
+    QSqlDatabase db = connection();
+    if (!db.isOpen()) return 0;
+
+    // 查找 end_time 为 0 或 NULL 的会话
+    QSqlQuery q(db);
+    q.exec("SELECT id, start_time FROM sessions WHERE end_time IS NULL OR end_time = 0");
+    QList<QPair<QString, qint64>> unclosed;
+    while (q.next()) {
+        unclosed.append({q.value(0).toString(), q.value(1).toLongLong()});
+    }
+    if (unclosed.isEmpty()) return 0;
+
+    int recovered = 0;
+    for (const auto& [sid, startTime] : unclosed) {
+        // 统计该会话的操作数
+        QSqlQuery qc(db);
+        qc.prepare("SELECT COUNT(*), MAX(time) FROM operations WHERE session_id = ?");
+        qc.addBindValue(sid);
+        qc.exec();
+        int opCount = 0;
+        qint64 lastOpTime = startTime;
+        if (qc.next()) {
+            opCount = qc.value(0).toInt();
+            if (!qc.value(1).isNull()) lastOpTime = qc.value(1).toLongLong();
+        }
+
+        // 更新会话: end_time 取最后一条操作的时间(或start_time), duration 向上取整到秒
+        qint64 endTime = lastOpTime;
+        int durationSec = static_cast<int>((endTime - startTime + 999) / 1000);
+
+        QSqlQuery qu(db);
+        qu.prepare("UPDATE sessions SET end_time=?, duration_seconds=?, operation_count=? WHERE id=?");
+        qu.addBindValue(endTime);
+        qu.addBindValue(durationSec);
+        qu.addBindValue(opCount);
+        qu.addBindValue(sid);
+        if (qu.exec()) recovered++;
+    }
+    return recovered;
+}
+
 int Database::cleanOldData(int retentionDays) {
     QSqlDatabase db = connection();
     if (!db.isOpen()) return 0;
