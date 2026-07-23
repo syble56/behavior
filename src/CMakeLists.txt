@@ -9,6 +9,7 @@ set(BEHAVIOR_SOURCES
     collector/event_processor.cpp
     collector/control_inspector.cpp
     collector/shortcut_resolver.cpp
+    collector/knob_resolver.cpp
     collector/dialog_tracker.cpp
 
     storage/database.cpp
@@ -39,6 +40,7 @@ set(BEHAVIOR_HEADERS
     collector/event_processor.h
     collector/control_inspector.h
     collector/shortcut_resolver.h
+    collector/knob_resolver.h
     collector/dialog_tracker.h
 
     storage/database.h
@@ -66,6 +68,7 @@ set(BEHAVIOR_MOC_HEADERS
     core/session.h
     collector/event_filter.h
     collector/event_processor.h
+    collector/knob_resolver.h
     storage/batch_writer.h
     storage/cleaner.h
     storage/aggregator.h

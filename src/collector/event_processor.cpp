@@ -1,6 +1,7 @@
 #include "event_processor.h"
 #include "control_inspector.h"
 #include "shortcut_resolver.h"
+#include "knob_resolver.h"
 #include "dialog_tracker.h"
 #include "storage/operation_queue.h"
 #include "storage/database.h"
@@ -228,6 +229,21 @@ void EventProcessor::processKeyPress(QWidget* target, QKeyEvent* event) {
     QString log = QString("[%1] KeyPress: %2")
         .arg(QTime::currentTime().toString("HH:mm:ss"))
         .arg(QKeySequence(key).toString());
+    emit operationRecorded(log);
+}
+
+void EventProcessor::processKnob(QWidget* target, QKeyEvent* event) {
+    auto info = KnobResolver::instance().resolve(event);
+    if (!info.valid) return;
+    Operation op = createOperation(target, EventType::Knob, InputMethod::Knob);
+    op.actionName = QString::fromLatin1(knobActionToString(info.action));
+    op.keySequence = info.keySequence;
+    enqueue(std::move(op));
+
+    QString log = QString("[%1] Knob: %2 (%3)")
+        .arg(QTime::currentTime().toString("HH:mm:ss"))
+        .arg(QString::fromLatin1(knobActionToString(info.action)))
+        .arg(info.keySequence);
     emit operationRecorded(log);
 }
 

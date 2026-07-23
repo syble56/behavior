@@ -15,7 +15,8 @@ enum class EventType {
     Shortcut,
     DialogOpen,
     DialogClose,
-    AreaClick
+    AreaClick,
+    Knob
 };
 
 // 输入方式
@@ -23,7 +24,6 @@ enum class InputMethod {
     Mouse,      // 鼠标点击/拖拽
     Touch,      // 触摸点击/滑动
     Keyboard,   // 键盘按键
-    Scroll,     // 滚动（鼠标滑轮、触控板滚动）
     Knob,       // 旋钮
     Derived     // 衍生事件（dialog_open/close、选件开关等）
 };
@@ -37,6 +37,7 @@ inline const char* eventTypeToString(EventType t) {
         case EventType::DialogOpen:  return "dialog_open";
         case EventType::DialogClose: return "dialog_close";
         case EventType::AreaClick:   return "area_click";
+        case EventType::Knob:        return "knob";
     }
     return "unknown";
 }
@@ -48,6 +49,7 @@ inline EventType stringToEventType(const QString& s) {
     if (s == "dialog_open")  return EventType::DialogOpen;
     if (s == "dialog_close") return EventType::DialogClose;
     if (s == "area_click")   return EventType::AreaClick;
+    if (s == "knob")          return EventType::Knob;
     return EventType::MouseClick;
 }
 
@@ -56,7 +58,6 @@ inline const char* inputMethodToString(InputMethod m) {
         case InputMethod::Mouse:    return "mouse";
         case InputMethod::Touch:    return "touch";
         case InputMethod::Keyboard: return "keyboard";
-        case InputMethod::Scroll:   return "scroll";
         case InputMethod::Knob:     return "knob";
         case InputMethod::Derived:  return "derived";
     }
@@ -67,7 +68,6 @@ inline InputMethod stringToInputMethod(const QString& s) {
     if (s == "mouse")    return InputMethod::Mouse;
     if (s == "touch")    return InputMethod::Touch;
     if (s == "keyboard") return InputMethod::Keyboard;
-    if (s == "scroll")   return InputMethod::Scroll;
     if (s == "knob")     return InputMethod::Knob;
     if (s == "derived")  return InputMethod::Derived;
     return InputMethod::Derived;

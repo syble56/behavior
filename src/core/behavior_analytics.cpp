@@ -3,6 +3,7 @@
 #include "session.h"
 #include "collector/event_filter.h"
 #include "collector/event_processor.h"
+#include "collector/knob_resolver.h"
 #include "storage/operation_queue.h"
 #include "storage/database.h"
 #include "storage/batch_writer.h"
@@ -85,6 +86,9 @@ void BehaviorAnalytics::init() {
     QObject::connect(self.impl_->processor.get(), &EventProcessor::operationRecorded,
                      &self, &BehaviorAnalytics::operationRecorded);
     
+    // 旋钮默认映射 (Ctrl+F11→左旋, Ctrl+F12→右旋)
+    KnobResolver::instance().loadDefaults();
+
     fprintf(stdout, "[I] event filter\n"); fflush(stdout);
     self.impl_->filter = std::make_unique<EventFilter>(self.impl_->processor.get());
     fprintf(stdout, "[I] install filter\n"); fflush(stdout);

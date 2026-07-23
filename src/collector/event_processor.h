@@ -35,6 +35,8 @@ public:
     void processShortcut(QWidget* target, QKeyEvent* event);
     // 处理独立按键（Esc/Enter）
     void processKeyPress(QWidget* target, QKeyEvent* event);
+    // 处理旋钮事件
+    void processKnob(QWidget* target, QKeyEvent* event);
     // 处理对话框打开
     void processDialogOpen(QObject* dialog);
     // 处理对话框关闭

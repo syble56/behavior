@@ -72,7 +72,7 @@ static Operation randomOp(qint64 ts) {
         case 0: op.inputMethod = InputMethod::Mouse; break;
         case 1: op.inputMethod = InputMethod::Keyboard; break;
         case 2: op.inputMethod = InputMethod::Touch; break;
-        default: op.inputMethod = InputMethod::Scroll; break;
+        default: op.inputMethod = InputMethod::Knob; break;
     }
     op.controlClass = "QPushButton";
     op.controlName = CONTROL_NAMES[rCtrl(rng)];

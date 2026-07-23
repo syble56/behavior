@@ -38,11 +38,10 @@ void InputTab::updateData(const QDateTime& start, const QDateTime& end) {
     // Map DB input_method values to display labels
     struct InputEntry { const char* dbValue; const char* label; };
     static const InputEntry entries[] = {
-        {"mouse_click", "Mouse Click"},
-        {"touch_tap",   "Touch Tap"},
-        {"shortcut",    "Keyboard"},
-        {"scroll",      "Scroll"},
-        {"knob",        "Knob"},
+        {"mouse",    "Mouse"},
+        {"touch",    "Touch"},
+        {"keyboard", "Keyboard"},
+        {"knob",     "Knob"},
     };
 
     if (useAgg) {

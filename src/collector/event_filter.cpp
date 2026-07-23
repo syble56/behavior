@@ -1,6 +1,7 @@
 #include "event_filter.h"
 #include "event_processor.h"
 #include "control_inspector.h"
+#include "knob_resolver.h"
 #include "core/config.h"
 #include <QApplication>
 #include <QMouseEvent>
@@ -98,6 +99,12 @@ bool EventFilter::eventFilter(QObject* watched, QEvent* event) {
             // Esc 和 Enter 无论是否带修饰键都记录
             if (key == Qt::Key_Escape || key == Qt::Key_Return || key == Qt::Key_Enter) {
                 processor_->processKeyPress(qobject_cast<QWidget*>(watched), ke);
+                break;
+            }
+            // 先检查是否为旋钮事件
+            auto knobInfo = KnobResolver::instance().resolve(ke);
+            if (knobInfo.valid) {
+                processor_->processKnob(qobject_cast<QWidget*>(watched), ke);
                 break;
             }
             // 仅带修饰键的按键视为快捷键
