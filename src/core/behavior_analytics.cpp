@@ -142,8 +142,10 @@ void BehaviorAnalytics::shutdown() {
     // 4. 结束会话（在 writer flush 之后，operationCount 才准确）
     if (self.impl_->session) {
         Session s = self.impl_->session->end();
+        QueryFilter f;
+        f.sessionId = s.id;
         s.operationCount = static_cast<int>(
-            Database::instance().countOperations(QueryFilter{}));
+            Database::instance().countOperations(f));
         Database::instance().updateSession(s);
     }
 

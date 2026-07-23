@@ -336,13 +336,27 @@ QList<Operation> Database::queryOperations(const QueryFilter& filter) {
 qint64 Database::countOperations(const QueryFilter& filter) {
     QSqlDatabase db = connection();
     if (!db.isOpen()) return 0;
-    QSqlQuery q(db);
+
+    QStringList where;
     if (filter.startTime.isValid() && filter.endTime.isValid()) {
-        q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time <= ?");
+        where << "time >= ?";
+        where << "time <= ?";
+    }
+    if (!filter.sessionId.isEmpty()) {
+        where << "session_id = ?";
+    }
+
+    QString sql = "SELECT COUNT(*) FROM operations";
+    if (!where.isEmpty()) sql += " WHERE " + where.join(" AND ");
+
+    QSqlQuery q(db);
+    q.prepare(sql);
+    if (filter.startTime.isValid() && filter.endTime.isValid()) {
         q.addBindValue(filter.startTime.toMSecsSinceEpoch());
         q.addBindValue(filter.endTime.toMSecsSinceEpoch());
-    } else {
-        q.prepare("SELECT COUNT(*) FROM operations");
+    }
+    if (!filter.sessionId.isEmpty()) {
+        q.addBindValue(filter.sessionId);
     }
     if (q.exec() && q.next()) return q.value(0).toLongLong();
     return 0;
@@ -378,7 +392,7 @@ int Database::recoverUnclosedSessions() {
     QSqlDatabase db = connection();
     if (!db.isOpen()) return 0;
 
-    // 查找 end_time 为 0 或 NULL 的会话
+    // 查找所有未正常关闭的会话（sessions 表很小，全扫无压力）
     QSqlQuery q(db);
     q.exec("SELECT id, start_time FROM sessions WHERE end_time IS NULL OR end_time = 0");
     QList<QPair<QString, qint64>> unclosed;

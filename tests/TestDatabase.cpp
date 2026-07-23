@@ -282,6 +282,34 @@ TEST_F(TestDatabase, testCountOperations) {
     EXPECT_EQ(Database::instance().countOperations(f), qint64(3));
 }
 
+TEST_F(TestDatabase, testCountOperationsBySessionId) {
+    // 多 session 场景: countOperations 只应返回指定 session 的操作数
+    qint64 base = QDateTime::currentMSecsSinceEpoch();
+    QList<Operation> ops;
+    for (int i = 0; i < 5; ++i) {
+        Operation op = makeOp(base + i);
+        op.sessionId = "sessA";
+        ops.append(op);
+    }
+    for (int i = 0; i < 3; ++i) {
+        Operation op = makeOp(base + 100 + i);
+        op.sessionId = "sessB";
+        ops.append(op);
+    }
+    EXPECT_TRUE(Database::instance().batchInsert(ops));
+
+    QueryFilter fa;
+    fa.sessionId = "sessA";
+    EXPECT_EQ(Database::instance().countOperations(fa), qint64(5));
+
+    QueryFilter fb;
+    fb.sessionId = "sessB";
+    EXPECT_EQ(Database::instance().countOperations(fb), qint64(3));
+
+    // 空 filter = 全表 count = 8
+    EXPECT_EQ(Database::instance().countOperations(QueryFilter{}), qint64(8));
+}
+
 TEST_F(TestDatabase, testCountEmptyRange) {
     QueryFilter f;
     f.startTime = QDateTime::currentDateTime().addDays(-1);
@@ -337,12 +365,20 @@ TEST_F(TestDatabase, testUpdateSession) {
 
 TEST_F(TestDatabase, testSessionLifecycleWithOperationCount) {
     // 模拟完整生命周期: insert session → write ops → count → update session
+    // 先插入一个旧 session 的操作，验证 countOperations 不会把旧数据算进来
+    qint64 base = QDateTime::currentMSecsSinceEpoch();
+    for (int i = 0; i < 10; ++i) {
+        Operation old = makeOp(base - 100000 + i);
+        old.sessionId = "old-session";
+        Database::instance().insertOperation(old);
+    }
+
     QString sid = "lifecycle-sess";
 
     // 1. 插入 session (start)
     Session s;
     s.id = sid;
-    s.startTime = QDateTime::currentMSecsSinceEpoch();
+    s.startTime = base;
     s.endTime = 0;
     s.durationSeconds = 0;
     s.operationCount = 0;
@@ -355,8 +391,10 @@ TEST_F(TestDatabase, testSessionLifecycleWithOperationCount) {
         EXPECT_TRUE(Database::instance().insertOperation(op));
     }
 
-    // 3. 统计操作数 (模拟 shutdown 中 writer->stop() 之后的 countOperations)
-    int count = static_cast<int>(Database::instance().countOperations(QueryFilter{}));
+    // 3. 统计操作数 — 必须按 session_id 过滤，否则会把旧 session 的 10 条也算进来
+    QueryFilter countFilter;
+    countFilter.sessionId = sid;
+    int count = static_cast<int>(Database::instance().countOperations(countFilter));
     EXPECT_EQ(count, 5);
 
     // 4. 更新 session (end)
@@ -374,7 +412,7 @@ TEST_F(TestDatabase, testSessionLifecycleWithOperationCount) {
     EXPECT_TRUE(q.next());
     EXPECT_GT(q.value(0).toLongLong(), 0);   // end_time 已设置
     EXPECT_EQ(q.value(1).toInt(), 10);        // duration_seconds
-    EXPECT_EQ(q.value(2).toInt(), 5);         // operation_count = 5
+    EXPECT_EQ(q.value(2).toInt(), 5);         // operation_count = 5 (不是 15)
 }
 
 TEST_F(TestDatabase, testSessionNotLostAfterReopen) {
@@ -467,6 +505,13 @@ TEST_F(TestDatabase, testRecoverMultipleUnclosedSessions) {
 
     int recovered = Database::instance().recoverUnclosedSessions();
     EXPECT_EQ(recovered, 3);
+
+    // 验证全部已关闭
+    QSqlDatabase db = Database::instance().connection();
+    QSqlQuery q(db);
+    q.exec("SELECT COUNT(*) FROM sessions WHERE (end_time IS NULL OR end_time = 0)");
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 0);  // 没有未关闭的了
 }
 
 // ========== 清理 ==========
