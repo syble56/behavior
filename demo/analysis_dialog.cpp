@@ -150,8 +150,9 @@ void AnalysisDialog::setupStyle() {
             border: none; gridline-color: #4A4D52; font-size: 13px; border-radius: 8px;
         }
         QTableWidget::item { padding: 8px 6px; color: #E2E8F0; }
-        QTableWidget::item:selected { background-color: #2563EB; color: #FFFFFF; }
-        QTableWidget::item:hover { background-color: #4A4D52; }
+        QTableWidget::item:selected { background-color: transparent; color: #E2E8F0; }
+        QTableWidget::item:hover { background-color: transparent; }
+        QTableWidget { outline: none; }
         QHeaderView::section {
             background-color: #32353A; color: #CBD5E1; font-weight: 600; font-size: 12px;
             padding: 10px 8px; border: none; border-bottom: 2px solid #4A4D52;
@@ -159,6 +160,8 @@ void AnalysisDialog::setupStyle() {
         QHeaderView::section:vertical {
             background-color: #32353A; color: #94A3B8; border-right: 1px solid #4A4D52; border-bottom: none;
         }
+        QTableCornerButton::section { background-color: #32353A; border: none; }
+        QHeaderView { background-color: #32353A; }
         QScrollBar:vertical { background-color: #32353A; width: 10px; border-radius: 5px; margin: 0; }
         QScrollBar::handle:vertical { background-color: #64748B; border-radius: 5px; min-height: 30px; }
         QScrollBar::handle:vertical:hover { background-color: #94A3B8; }
