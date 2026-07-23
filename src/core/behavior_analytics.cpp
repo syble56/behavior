@@ -127,19 +127,19 @@ void BehaviorAnalytics::shutdown() {
     // 1. 卸载过滤器
     if (self.impl_->filter) self.impl_->filter->uninstall();
 
-    // 2. 结束会话
+    // 2. 停止聚合调度
+    if (self.impl_->scheduler) self.impl_->scheduler->stop();
+
+    // 3. 停止批量写入（flush剩余）— 先刷盘再统计 operationCount
+    if (self.impl_->writer) self.impl_->writer->stop();
+
+    // 4. 结束会话（在 writer flush 之后，operationCount 才准确）
     if (self.impl_->session) {
         Session s = self.impl_->session->end();
         s.operationCount = static_cast<int>(
             Database::instance().countOperations(QueryFilter{}));
         Database::instance().updateSession(s);
     }
-
-    // 3. 停止聚合调度
-    if (self.impl_->scheduler) self.impl_->scheduler->stop();
-
-    // 4. 停止批量写入（flush剩余）
-    if (self.impl_->writer) self.impl_->writer->stop();
 
     // 5. 异步清理过期数据（在工作线程执行，QEventLoop 等待不阻塞UI）
     if (self.impl_->cleaner) {

@@ -335,6 +335,72 @@ TEST_F(TestDatabase, testUpdateSession) {
     EXPECT_EQ(q.value(1).toInt(), 50);
 }
 
+TEST_F(TestDatabase, testSessionLifecycleWithOperationCount) {
+    // 模拟完整生命周期: insert session → write ops → count → update session
+    QString sid = "lifecycle-sess";
+
+    // 1. 插入 session (start)
+    Session s;
+    s.id = sid;
+    s.startTime = QDateTime::currentMSecsSinceEpoch();
+    s.endTime = 0;
+    s.durationSeconds = 0;
+    s.operationCount = 0;
+    EXPECT_TRUE(Database::instance().insertSession(s));
+
+    // 2. 写入 5 条操作
+    for (int i = 0; i < 5; ++i) {
+        Operation op = makeOp(s.startTime + i * 1000);
+        op.sessionId = sid;
+        EXPECT_TRUE(Database::instance().insertOperation(op));
+    }
+
+    // 3. 统计操作数 (模拟 shutdown 中 writer->stop() 之后的 countOperations)
+    int count = static_cast<int>(Database::instance().countOperations(QueryFilter{}));
+    EXPECT_EQ(count, 5);
+
+    // 4. 更新 session (end)
+    s.endTime = s.startTime + 10000;
+    s.durationSeconds = 10;
+    s.operationCount = count;
+    EXPECT_TRUE(Database::instance().updateSession(s));
+
+    // 5. 验证 session 数据正确
+    QSqlDatabase db = Database::instance().connection();
+    QSqlQuery q(db);
+    q.prepare("SELECT end_time,duration_seconds,operation_count FROM sessions WHERE id=?");
+    q.addBindValue(sid);
+    EXPECT_TRUE(q.exec());
+    EXPECT_TRUE(q.next());
+    EXPECT_GT(q.value(0).toLongLong(), 0);   // end_time 已设置
+    EXPECT_EQ(q.value(1).toInt(), 10);        // duration_seconds
+    EXPECT_EQ(q.value(2).toInt(), 5);         // operation_count = 5
+}
+
+TEST_F(TestDatabase, testSessionNotLostAfterReopen) {
+    // 验证 session 在数据库重开后仍然存在
+    Session s;
+    s.id = "reopen-sess";
+    s.startTime = QDateTime::currentMSecsSinceEpoch();
+    s.endTime = s.startTime + 5000;
+    s.durationSeconds = 5;
+    s.operationCount = 3;
+    EXPECT_TRUE(Database::instance().insertSession(s));
+
+    // 关闭并重新打开
+    Database::instance().close();
+    EXPECT_TRUE(Database::instance().open(path_));
+
+    QSqlDatabase db = Database::instance().connection();
+    QSqlQuery q(db);
+    q.prepare("SELECT id,operation_count FROM sessions WHERE id=?");
+    q.addBindValue("reopen-sess");
+    EXPECT_TRUE(q.exec());
+    EXPECT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), QString("reopen-sess"));
+    EXPECT_EQ(q.value(1).toInt(), 3);
+}
+
 // ========== 清理 ==========
 
 TEST_F(TestDatabase, testCleanOldData) {

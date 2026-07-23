@@ -337,9 +337,13 @@ qint64 Database::countOperations(const QueryFilter& filter) {
     QSqlDatabase db = connection();
     if (!db.isOpen()) return 0;
     QSqlQuery q(db);
-    q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time <= ?");
-    q.addBindValue(filter.startTime.toMSecsSinceEpoch());
-    q.addBindValue(filter.endTime.toMSecsSinceEpoch());
+    if (filter.startTime.isValid() && filter.endTime.isValid()) {
+        q.prepare("SELECT COUNT(*) FROM operations WHERE time >= ? AND time <= ?");
+        q.addBindValue(filter.startTime.toMSecsSinceEpoch());
+        q.addBindValue(filter.endTime.toMSecsSinceEpoch());
+    } else {
+        q.prepare("SELECT COUNT(*) FROM operations");
+    }
     if (q.exec() && q.next()) return q.value(0).toLongLong();
     return 0;
 }
