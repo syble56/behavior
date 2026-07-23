@@ -1,4 +1,4 @@
-// TestCore.cpp �?补充核心模块测试：Config, Session, DialogTracker, ShortcutResolver
+// TestCore.cpp �?补充核心模块测试：Config, Session, DialogTracker, ShortcutResolver
 #include <gtest/gtest.h>
 #include <QApplication>
 #include <QDateTime>
@@ -50,6 +50,39 @@ TEST(Config, DuplicateAddIgnored) {
     cfg.addIgnoreControl("QTestWidget"); // duplicate
     cfg.removeIgnoreControl("QTestWidget");
     EXPECT_FALSE(cfg.shouldIgnore("QTestWidget"));
+}
+
+TEST(Config, EnableDisable) {
+    auto& cfg = Config::instance();
+    cfg.setEnabled(true);
+    EXPECT_TRUE(cfg.enabled());
+    cfg.setEnabled(false);
+    EXPECT_FALSE(cfg.enabled());
+    cfg.setEnabled(true); // restore
+}
+
+TEST(Config, RetentionDays) {
+    auto& cfg = Config::instance();
+    int old = cfg.retentionDays();
+    cfg.setRetentionDays(30);
+    EXPECT_EQ(cfg.retentionDays(), 30);
+    cfg.setRetentionDays(old);
+}
+
+TEST(Config, BatchSize) {
+    auto& cfg = Config::instance();
+    int old = cfg.batchSize();
+    cfg.setBatchSize(50);
+    EXPECT_EQ(cfg.batchSize(), 50);
+    cfg.setBatchSize(old);
+}
+
+TEST(Config, DatabasePath) {
+    auto& cfg = Config::instance();
+    QString old = cfg.databasePath();
+    cfg.setDatabasePath("/tmp/test.db");
+    EXPECT_EQ(cfg.databasePath().toStdString(), "/tmp/test.db");
+    cfg.setDatabasePath(old);
 }
 
 // ============ SessionManager ============

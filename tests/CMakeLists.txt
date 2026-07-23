@@ -40,6 +40,8 @@ set(BEHAVIOR_TESTS
     TestCore
     TestEventProcessor
     TestCalendarPicker
+    TestKnobResolver
+    TestEventCollection
 )
 
 foreach(TEST_NAME ${BEHAVIOR_TESTS})
