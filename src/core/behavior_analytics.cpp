@@ -70,6 +70,12 @@ void BehaviorAnalytics::init() {
     self.impl_->writer = std::make_unique<BatchWriter>(self.impl_->queue.get());
     self.impl_->writer->start();
 
+    // 恢复上次未正常关闭的会话（必须在新 session 插入之前，否则会把当前 session 也恢复掉）
+    int recoveredSessions = Database::instance().recoverUnclosedSessions();
+    if (recoveredSessions > 0) {
+        fprintf(stdout, "[I] recovered %d unclosed sessions\n", recoveredSessions); fflush(stdout);
+    }
+
     // 4. 会话
     fprintf(stdout, "[I] session\n"); fflush(stdout);
     self.impl_->session = std::make_unique<SessionManager>();
@@ -97,12 +103,6 @@ void BehaviorAnalytics::init() {
     fprintf(stdout, "[I] recover dialogs\n"); fflush(stdout);
     // 补齐上次未正常关闭的弹窗
     self.impl_->processor->recoverUnclosedDialogs();
-
-    // 恢复上次未正常关闭的会话（崩溃/被杀时 shutdown 未执行）
-    int recoveredSessions = Database::instance().recoverUnclosedSessions();
-    if (recoveredSessions > 0) {
-        fprintf(stdout, "[I] recovered %d unclosed sessions\n", recoveredSessions); fflush(stdout);
-    }
 
     // 6. 分析器
     self.impl_->analyzer = std::make_unique<BehaviorAnalyzer>();
